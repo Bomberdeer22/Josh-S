@@ -15,7 +15,6 @@ import io
 import queue
 import time
 from datetime import datetime
-import json
 
 # Advanced Mac Controllers
 try:
@@ -33,13 +32,13 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "3.1.0"
+VERSION = "3.1.1"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
 active_connections = {} 
 activities = []
-messages = [] # Global message board for device communication
+messages = []
 
 def add_activity(device_name, action, icon='sync'):
     activities.insert(0, {
@@ -103,7 +102,7 @@ def get_ip_location():
             city = r.get('city') or 'Unknown'
             if lat and lon: return float(lat), float(lon), f"{city} (IP)"
         except: continue
-    return 51.5074, -0.1278, "Unknown"
+    return 51.5074, -0.1278, "Location Unavailable"
 
 def set_mac_brightness(level):
     level = float(level)
@@ -138,42 +137,11 @@ def admin_info():
     if "%" in battery_raw:
         try: batt_val = int(battery_raw.split("%")[0].split("\t")[-1])
         except: pass
-    
-    host = {
-        "id": "host",
-        "name": "My MacBook",
-        "type": "macbook",
-        "model": "MacBook Pro",
-        "os": "macOS",
-        "battery": batt_val,
-        "storage": {"used": 450, "total": 1000},
-        "status": "connected",
-        "lastSeen": "Now",
-        "ip": get_ip()
-    }
-    
+    host = {"id": "host", "name": "My MacBook", "type": "macbook", "model": "MacBook Pro", "os": "macOS", "battery": batt_val, "storage": {"used": 450, "total": 1000}, "status": "connected", "lastSeen": "Now", "ip": get_ip()}
     devices = []
     for ip, info in active_connections.items():
-        devices.append({
-            "id": ip,
-            "name": info.get('name', 'Mobile Device'),
-            "type": "android" if "Samsung" in info.get('model', '') else "iphone",
-            "model": info.get('model', 'Unknown'),
-            "os": info.get('platform', 'Unknown'),
-            "battery": info.get('battery', 0),
-            "storage": {"used": 0, "total": 0},
-            "status": "connected",
-            "lastSeen": info.get('connected_at', 'Now'),
-            "ip": ip,
-            "specs": info # Pass extra specs
-        })
-        
-    return jsonify({
-        "host": host,
-        "devices": devices,
-        "activities": activities,
-        "messages": messages[-10:] # Last 10 messages
-    })
+        devices.append({"id": ip, "name": info['name'], "type": "android" if "Samsung" in info['name'] else "iphone", "model": "Remote Device", "os": "Remote OS", "battery": 85, "storage": {"used": 0, "total": 0}, "status": "connected", "lastSeen": "Now", "ip": ip, "specs": info})
+    return jsonify({"host": host, "devices": devices, "activities": activities, "messages": messages[-10:]})
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -188,33 +156,25 @@ def register():
         "connected_at": datetime.now().strftime("%H:%M:%S"),
         "last_seen": time.time()
     }
-    add_activity(active_connections[ip]['name'], f"Registered with {specs.get('battery')}% battery", "connect")
+    add_activity(active_connections[ip]['name'], f"Registered with {specs.get('battery', 0)}% battery", "connect")
     gui_queue.put('refresh_view')
-    return jsonify({"status": "registered", "all_devices": active_connections})
+    return jsonify({"status": "registered"})
 
 @app.route('/broadcast', methods=['POST'])
 def broadcast():
     ip = request.remote_addr
     msg = request.json.get('message', '')
     sender = active_connections.get(ip, {}).get('name', ip)
-    new_msg = {
-        "sender": sender,
-        "content": msg,
-        "time": datetime.now().strftime("%H:%M:%S")
-    }
+    new_msg = {"sender": sender, "content": msg, "time": datetime.now().strftime("%H:%M:%S")}
     messages.append(new_msg)
     add_activity(sender, f"Broadcast: {msg}", "sync")
     return jsonify({"status": "sent"})
 
 @app.route('/messages', methods=['GET'])
 def get_messages():
-    # Devices call this to get the latest state and messages
-    return jsonify({
-        "messages": messages[-20:],
-        "devices": active_connections
-    })
+    return jsonify({"messages": messages[-20:], "devices": active_connections})
 
-# Control APIs
+# Controls
 @app.route('/move', methods=['POST'])
 def move_mouse():
     pyautogui.moveRel(request.json.get('dx', 0), request.json.get('dy', 0))
@@ -331,19 +291,25 @@ def run_server():
 
 def update_app():
     try:
+        # Check for Trash
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        if ".Trash" in base_path:
+            messagebox.showerror("Update Blocked", "You are running Josh S from the Trash folder! Move the app to Applications before updating.")
+            return
+
         r = requests.get(REPO_URL, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
         z = zipfile.ZipFile(io.BytesIO(r.content))
-        base = os.path.dirname(os.path.abspath(__file__))
-        temp = os.path.join(base, "temp_update")
-        if os.path.exists(temp): shutil.rmtree(temp)
-        os.makedirs(temp); z.extractall(temp)
-        root_f = os.listdir(temp)[0]
-        new_s = os.path.join(temp, root_f, "mac_server")
-        shutil.copy2(os.path.join(new_s, "server.py"), os.path.join(base, "server.py"))
-        sd = os.path.join(base, "static")
-        if os.path.exists(sd): shutil.rmtree(sd)
-        shutil.copytree(os.path.join(new_s, "static"), sd)
-        shutil.rmtree(temp)
+        temp_dir = os.path.join(base_path, "temp_update")
+        if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
+        os.makedirs(temp_dir); z.extractall(temp_dir)
+        root_folder = os.listdir(temp_dir)[0]
+        new_server_dir = os.path.join(temp_dir, root_folder, "mac_server")
+        shutil.copy2(os.path.join(new_server_dir, "server.py"), os.path.join(base_path, "server.py"))
+        static_dest = os.path.join(base_path, "static")
+        if os.path.exists(static_dest): shutil.rmtree(static_dest)
+        shutil.copytree(os.path.join(new_server_dir, "static"), static_dest)
+        shutil.rmtree(temp_dir)
+        messagebox.showinfo("Update Complete", "Josh S updated! Restarting...")
         try: subprocess.Popen(["open", "-n", "/Applications/Josh S.app"])
         except: pass
         os._exit(0)
@@ -371,6 +337,8 @@ def show_lost_screen(message):
         tk.Label(lost_window, text=message, font=("Helvetica", 30), fg="white", bg="black", wraplength=800).pack(expand=True)
         lost_window.mainloop()
     threading.Thread(target=create, daemon=True).start()
+
+def open_settings(): os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices'")
 
 def start_gui():
     root = tk.Tk()
@@ -423,7 +391,7 @@ def start_gui():
             for ip, info in active_connections.items():
                 card = tk.Frame(main_container, bg="#111111", pady=10, padx=15); card.pack(fill='x', pady=5)
                 tk.Label(card, text=f"{info['name']} ({info.get('battery', '??')}%)", font=("Helvetica", 14, "bold"), fg="#ffffff", bg="#111111").pack(anchor='w')
-                tk.Label(card, text=f"IP: {ip} • Platform: {info.get('platform', '??')}", font=("Helvetica", 9), fg="#888888", bg="#111111").pack(anchor='w')
+                tk.Label(card, text=f"IP: {ip}", font=("Helvetica", 9), fg="#888888", bg="#111111").pack(anchor='w')
             ModernButton(main_container, "Open Full Dashboard", lambda: os.system("open http://localhost:5005/admin"), "#007aff", "white", ("Helvetica", 12, "bold")).pack(pady=20, fill='x')
             ModernButton(main_container, "Back to Pairing", lambda: set_view("connect"), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=5, fill='x')
         footer = tk.Frame(main_container, bg='#000000'); footer.pack(side='bottom', fill='x')
