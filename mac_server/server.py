@@ -30,7 +30,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
@@ -91,25 +91,31 @@ def get_lost_info():
     if "%" in battery_raw:
         percent = battery_raw.split("%")[0].split("\t")[-1] + "%"
     
-    # Simple IP-based Location (Privacy-safe)
+    # Precise Location using ip-api.com (No API key required for basic usage)
+    lat, lon = 0, 0
+    location_name = "Location Unavailable"
     try:
-        loc_data = requests.get("https://ipapi.co/json/", timeout=5).json()
-        location = f"{loc_data.get('city')}, {loc_data.get('region')}, {loc_data.get('country_name')}"
-    except:
-        location = "Location Unavailable (No Internet)"
+        # Use a more reliable free geo-ip service
+        r = requests.get("http://ip-api.com/json/", timeout=5).json()
+        if r.get('status') == 'success':
+            lat = r.get('lat')
+            lon = r.get('lon')
+            location_name = f"{r.get('city')}, {r.get('regionName')}, {r.get('country')}"
+    except Exception as e:
+        print(f"Location Error: {e}")
         
     return jsonify({
         "battery": percent,
-        "location": location,
+        "location": location_name,
+        "lat": lat,
+        "lon": lon,
         "ip": get_ip()
     })
 
 @app.route('/play_noise', methods=['POST'])
 def play_noise():
-    # Play aggressive alert sound
     os.system("osascript -e 'set volume output volume 100'")
     os.system("osascript -e 'beep 3'")
-    # Play a louder system sound
     os.system("afplay /System/Library/Sounds/Sosumi.aiff &")
     os.system("afplay /System/Library/Sounds/Sosumi.aiff &")
     return jsonify({"status": "success"})
@@ -124,11 +130,10 @@ def activate_lost_mode():
 @app.route('/stop_lost', methods=['POST'])
 def stop_lost():
     global lost_window
-    if lost_window:
-        gui_queue.put('close_lost')
+    gui_queue.put('close_lost')
     return jsonify({"status": "success"})
 
-# --- Existing App Routes ---
+# --- Standard API Endpoints ---
 @app.route('/')
 def index(): return send_from_directory(app.static_folder, 'index.html')
 @app.route('/<path:path>')
@@ -194,8 +199,10 @@ def media():
             if "success" not in result.stdout: pyautogui.press('space')
         elif action == 'next': os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"document.querySelector(\\\".ytp-next-button\\\")?.click()\"' 2>/dev/null")
         elif action == 'prev': os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"window.history.back()\"' 2>/dev/null")
-    elif target == "spotify": os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
-    elif target == "music": os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
+    elif target == "spotify":
+        os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
+    elif target == "music":
+        os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
     else:
         cmd_key = {'play': 'playpause', 'next': 'nexttrack', 'prev': 'prevtrack'}[action]
         pyautogui.press(cmd_key)
@@ -325,12 +332,12 @@ def start_gui():
     tk.Label(main_frame, text="Josh S", font=title_font, fg="#ffffff", bg='#000000').pack(pady=(0, 5))
     tk.Label(main_frame, text=f"Version {VERSION}", font=("Helvetica", 10), fg="#555555", bg='#000000').pack()
 
-    status_frame = tk.Frame(main_frame, bg='#111111', pady=10, padx=20)
-    status_frame.pack(pady=20, fill='x')
+    status_badge = tk.Frame(main_frame, bg='#111111', pady=10, padx=20)
+    status_badge.pack(pady=20, fill='x')
     status_color = "#4CAF50" if HAS_PRO_CONTROLLER else "#f44336"
     status_msg = "Pro Engine Active" if HAS_PRO_CONTROLLER else "Standard Mode"
-    tk.Label(status_frame, text=status_msg, font=subtitle_font, fg=status_color, bg='#111111').pack()
-    tk.Label(status_frame, text="Server is Online ✅", font=label_font, fg="#888888", bg='#111111').pack()
+    tk.Label(status_badge, text=status_msg, font=subtitle_font, fg=status_color, bg='#111111').pack()
+    tk.Label(status_badge, text="Server is Online ✅", font=label_font, fg="#888888", bg='#111111').pack()
 
     ip_addr = get_ip()
     url = f"http://{ip_addr}:5005"
@@ -339,6 +346,8 @@ def start_gui():
     entry_url.insert(0, url)
     entry_url.config(state='readonly', readonlybackground="#0a0a0a")
     entry_url.pack(pady=5, ipady=10)
+
+    tk.Label(main_frame, text="Type this address into your Samsung's browser", font=("Helvetica", 10), fg="#666666", bg='#000000').pack(pady=5)
 
     btn_frame = tk.Frame(main_frame, bg='#000000')
     btn_frame.pack(side='bottom', pady=20, fill='x')

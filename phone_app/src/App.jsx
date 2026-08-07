@@ -4,7 +4,7 @@ import {
   Delete, CornerDownLeft, Space, Play, SkipBack, SkipForward, 
   Sun, Moon, Monitor, Search, LayoutGrid, Globe, FolderOpen,
   ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Music,
-  Eye, RefreshCw, Trash2, ShieldAlert, Battery, MapPin, AlertCircle, Power
+  Eye, RefreshCw, Trash2, ShieldAlert, Battery, MapPin, AlertCircle, Power, ExternalLink
 } from 'lucide-react';
 
 function App() {
@@ -16,7 +16,7 @@ function App() {
   const [brightness, setBrightness] = useState(0.5);
   const [volume, setVolume] = useState(50);
   const [lostMsg, setLostMsg] = useState('This Mac is lost. Please return to Josh S.');
-  const [lostInfo, setLostInfo] = useState({ battery: '--', location: 'Fetching...' });
+  const [lostInfo, setLostInfo] = useState({ battery: '--', location: 'Fetching...', lat: 0, lon: 0 });
   
   const lastPos = useRef({ x: 0, y: 0 });
   const moveBuffer = useRef({ dx: 0, dy: 0 });
@@ -221,8 +221,22 @@ function App() {
           <div style={styles.tabContent}>
             <div style={styles.infoCard}>
                 <div style={styles.infoItem}><Battery color="#4CAF50" /> <div><p style={styles.infoLabel}>Battery</p><strong>{lostInfo.battery}</strong></div></div>
-                <div style={styles.infoItem}><MapPin color="#ff3b30" /> <div><p style={styles.infoLabel}>Last Location</p><strong>{lostInfo.location}</strong></div></div>
-                <button style={styles.refreshBtn} onClick={fetchLostInfo}><RefreshCw size={14} /> Refresh Info</button>
+                <div style={styles.infoItem}><MapPin color="#ff3b30" /> <div><p style={styles.infoLabel}>Location (via IP)</p><strong>{lostInfo.location}</strong></div></div>
+                
+                {lostInfo.lat !== 0 && (
+                   <div style={styles.mapContainer}>
+                      <img 
+                        style={styles.mapImg} 
+                        src={`https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lostInfo.lon},${lostInfo.lat}&z=13&l=map&size=450,200&pt=${lostInfo.lon},${lostInfo.lat},pm2rdl`} 
+                        alt="Location Map"
+                      />
+                      <button style={styles.mapLink} onClick={() => window.open(`https://www.google.com/maps?q=${lostInfo.lat},${lostInfo.lon}`, '_blank')}>
+                         <ExternalLink size={14} /> Open in Google Maps
+                      </button>
+                   </div>
+                )}
+                
+                <button style={styles.refreshBtn} onClick={fetchLostInfo}><RefreshCw size={14} /> Refresh Location & Info</button>
             </div>
 
             <div style={styles.controlSection}>
@@ -230,10 +244,10 @@ function App() {
                 <div style={styles.lostActions}>
                     <button style={styles.noiseBtn} onClick={() => sendCommand('play_noise')}><AlertCircle size={20} /> Play Loud Sound</button>
                     <div style={styles.msgBox}>
-                        <textarea style={styles.msgInput} value={lostMsg} onChange={(e) => setLostMsg(e.target.value)} />
+                        <textarea style={styles.msgInput} value={lostMsg} onChange={(e) => setLostMsg(e.target.value)} placeholder="Type a message for the finder..." />
                         <button style={styles.activateBtn} onClick={() => sendCommand('lost_mode', { message: lostMsg })}><ShieldAlert size={18}/> Activate Lost Mode</button>
                     </div>
-                    <button style={styles.stopBtn} onClick={() => sendCommand('stop_lost')}>Stop Lost Mode</button>
+                    <button style={styles.stopBtn} onClick={() => sendCommand('stop_lost')}>Stop Lost Mode (Dismiss Screen)</button>
                 </div>
             </div>
           </div>
@@ -291,6 +305,9 @@ const styles = {
   infoCard: { backgroundColor: '#1a1a1a', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' },
   infoItem: { display: 'flex', alignItems: 'center', gap: '15px' },
   infoLabel: { fontSize: '12px', color: '#888', margin: 0 },
+  mapContainer: { borderRadius: '12px', overflow: 'hidden', backgroundColor: '#000', border: '1px solid #333', marginTop: '5px' },
+  mapImg: { width: '100%', height: 'auto', display: 'block' },
+  mapLink: { width: '100%', padding: '10px', backgroundColor: '#222', border: 'none', color: '#007aff', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' },
   refreshBtn: { backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px', fontSize: '12px', marginTop: '10px' },
   lostActions: { display: 'flex', flexDirection: 'column', gap: '15px' },
   noiseBtn: { backgroundColor: '#ff3b30', color: '#fff', border: 'none', borderRadius: '12px', padding: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' },
@@ -303,7 +320,7 @@ const styles = {
   textInput: { flex: 1, backgroundColor: '#1a1a1a', border: '1px solid #333', color: '#fff', padding: '10px', borderRadius: '8px', fontSize: '14px' },
   sendBtn: { backgroundColor: '#007aff', color: '#fff', border: 'none', padding: '0 12px', borderRadius: '8px' },
   specialKeys: { display: 'flex', gap: '8px' },
-  keyBtn: { backgroundColor: '#1a1a1a', border: '1px solid #333', color: '#aaa', padding: '12px', borderRadius: '10px', display: 'flex', justifyCenter: 'center', alignItems: 'center' },
+  keyBtn: { backgroundColor: '#1a1a1a', border: '1px solid #333', color: '#aaa', padding: '12px', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center' },
   keyBtnSmall: { flex: 1, backgroundColor: '#1a1a1a', border: '1px solid #333', color: '#888', padding: '8px', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center' }
 };
 
