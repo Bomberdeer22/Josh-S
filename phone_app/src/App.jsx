@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, Volume1, VolumeX, MousePointer, Keyboard, Send, Lock, Delete, CornerDownLeft, Space } from 'lucide-react';
+import { 
+  Volume2, Volume1, VolumeX, MousePointer, Keyboard, Send, Lock, 
+  Delete, CornerDownLeft, Space, Play, SkipBack, SkipForward, 
+  Sun, Moon, Monitor, Search, LayoutGrid, Globe, FolderOpen,
+  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X
+} from 'lucide-react';
 
 function App() {
   const [ip, setIp] = useState(window.location.hostname || '');
   const [status, setStatus] = useState('Connecting...');
   const [text, setText] = useState('');
+  const [activeTab, setActiveTab] = useState('mouse');
   const lastPos = useRef({ x: 0, y: 0 });
   
   const moveBuffer = useRef({ dx: 0, dy: 0 });
@@ -78,7 +84,7 @@ function App() {
         <div style={styles.headerTop}>
           <h1 style={styles.title}>Josh S</h1>
           <button style={styles.lockButton} onClick={() => sendCommand('lock')}>
-            <Lock size={20} /> Lock Mac
+            <Lock size={16} /> Lock
           </button>
         </div>
         <div style={styles.statusBadge}>
@@ -87,38 +93,119 @@ function App() {
         </div>
       </header>
 
+      <nav style={styles.tabs}>
+        <button 
+          style={{...styles.tab, borderBottom: activeTab === 'mouse' ? '2px solid #007aff' : 'none', color: activeTab === 'mouse' ? '#007aff' : '#888'}} 
+          onClick={() => setActiveTab('mouse')}
+        >Mouse</button>
+        <button 
+          style={{...styles.tab, borderBottom: activeTab === 'media' ? '2px solid #007aff' : 'none', color: activeTab === 'media' ? '#007aff' : '#888'}} 
+          onClick={() => setActiveTab('media')}
+        >Media</button>
+        <button 
+          style={{...styles.tab, borderBottom: activeTab === 'apps' ? '2px solid #007aff' : 'none', color: activeTab === 'apps' ? '#007aff' : '#888'}} 
+          onClick={() => setActiveTab('apps')}
+        >Apps</button>
+      </nav>
+
       <main style={styles.main}>
-        <div style={styles.touchpadContainer}>
-          <div 
-            style={styles.touchpad}
-            onTouchMove={handleTouchMove}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-          >
-            <MousePointer size={40} color="#444" />
-          </div>
-          <div 
-            style={styles.scrollbar}
-            onTouchMove={handleScrollMove}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-          >
-            <div style={styles.scrollIcon}>↕</div>
-          </div>
-        </div>
+        {activeTab === 'mouse' && (
+          <div style={styles.tabContent}>
+            <div style={styles.touchpadContainer}>
+              <div 
+                style={styles.touchpad}
+                onTouchMove={handleTouchMove}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+              >
+                <MousePointer size={40} color="#333" />
+              </div>
+              <div 
+                style={styles.scrollbar}
+                onTouchMove={handleScrollMove}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+              >
+                <div style={styles.scrollIcon}>↕</div>
+              </div>
+            </div>
 
-        <div style={styles.clickGrid}>
-          <button style={styles.clickBtn} onClick={() => sendCommand('click', { button: 'left' })}>Left Click</button>
-          <button style={styles.clickBtn} onClick={() => sendCommand('click', { button: 'right' })}>Right Click</button>
-        </div>
-
-        <div style={styles.controlRow}>
-          <div style={styles.volumeGroup}>
-            <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'down' })}><Volume1 /></button>
-            <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'mute' })}><VolumeX /></button>
-            <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'up' })}><Volume2 /></button>
+            <div style={styles.clickGrid}>
+              <button style={styles.clickBtn} onClick={() => sendCommand('click', { button: 'left' })}>Left Click</button>
+              <button style={styles.clickBtn} onClick={() => sendCommand('click', { button: 'right' })}>Right Click</button>
+            </div>
+            
+            <div style={styles.arrowGrid}>
+                <div />
+                <button style={styles.keyBtn} onClick={() => sendCommand('key', { key: 'up' })}><ChevronUp /></button>
+                <div />
+                <button style={styles.keyBtn} onClick={() => sendCommand('key', { key: 'left' })}><ChevronLeft /></button>
+                <button style={styles.keyBtn} onClick={() => sendCommand('key', { key: 'down' })}><ChevronDown /></button>
+                <button style={styles.keyBtn} onClick={() => sendCommand('key', { key: 'right' })}><ChevronRight /></button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {activeTab === 'media' && (
+          <div style={styles.tabContent}>
+            <div style={styles.controlSection}>
+              <p style={styles.sectionTitle}>Volume</p>
+              <div style={styles.volumeGroup}>
+                <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'down' })}><Volume1 /></button>
+                <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'mute' })}><VolumeX /></button>
+                <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'up' })}><Volume2 /></button>
+              </div>
+            </div>
+
+            <div style={styles.controlSection}>
+              <p style={styles.sectionTitle}>Playback</p>
+              <div style={styles.mediaGroup}>
+                <button style={styles.mediaBtn} onClick={() => sendCommand('media', { action: 'prev' })}><SkipBack /></button>
+                <button style={styles.mediaBtnPrimary} onClick={() => sendCommand('media', { action: 'play' })}><Play fill="white" /></button>
+                <button style={styles.mediaBtn} onClick={() => sendCommand('media', { action: 'next' })}><SkipForward /></button>
+              </div>
+            </div>
+
+            <div style={styles.controlSection}>
+              <p style={styles.sectionTitle}>Brightness</p>
+              <div style={styles.brightnessGroup}>
+                <button style={styles.iconBtn} onClick={() => sendCommand('brightness', { action: 'down' })}><Moon /></button>
+                <button style={styles.iconBtn} onClick={() => sendCommand('brightness', { action: 'up' })}><Sun /></button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'apps' && (
+          <div style={styles.tabContent}>
+            <div style={styles.appGrid}>
+              <button style={styles.appBtn} onClick={() => sendCommand('launch', { app: 'browser' })}>
+                <Globe size={24} />
+                <span>Safari</span>
+              </button>
+              <button style={styles.appBtn} onClick={() => sendCommand('launch', { app: 'finder' })}>
+                <FolderOpen size={24} />
+                <span>Finder</span>
+              </button>
+              <button style={styles.appBtn} onClick={() => sendCommand('shortcut', { keys: ['command', 'space'] })}>
+                <Search size={24} />
+                <span>Spotlight</span>
+              </button>
+              <button style={styles.appBtn} onClick={() => sendCommand('shortcut', { keys: ['command', 'tab'] })}>
+                <LayoutGrid size={24} />
+                <span>Switch App</span>
+              </button>
+              <button style={styles.appBtn} onClick={() => sendCommand('key', { key: 'f11' })}>
+                <Monitor size={24} />
+                <span>Desktop</span>
+              </button>
+              <button style={styles.appBtn} onClick={() => sendCommand('shortcut', { keys: ['command', 'q'] })}>
+                <X size={24} color="#ff3b30" />
+                <span>Quit App</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         <div style={styles.keyboardArea}>
             <form onSubmit={handleTextSubmit} style={styles.inputRow}>
@@ -126,14 +213,14 @@ function App() {
                 style={styles.textInput} 
                 value={text} 
                 onChange={(e) => setText(e.target.value)} 
-                placeholder="Type something..."
+                placeholder="Type here..."
               />
-              <button type="submit" style={styles.sendBtn}><Send size={20}/></button>
+              <button type="submit" style={styles.sendBtn}><Send size={18}/></button>
             </form>
             <div style={styles.specialKeys}>
-                <button style={styles.keyBtn} onClick={() => sendCommand('key', { key: 'backspace' })}><Delete size={18} /></button>
-                <button style={styles.keyBtn} onClick={() => sendCommand('key', { key: 'space' })}><Space size={18}/></button>
-                <button style={styles.keyBtn} onClick={() => sendCommand('key', { key: 'enter' })}><CornerDownLeft size={18}/></button>
+                <button style={styles.keyBtnSmall} onClick={() => sendCommand('key', { key: 'backspace' })}><Delete size={16} /></button>
+                <button style={styles.keyBtnSmall} onClick={() => sendCommand('key', { key: 'space' })}><Space size={16}/></button>
+                <button style={styles.keyBtnSmall} onClick={() => sendCommand('key', { key: 'enter' })}><CornerDownLeft size={16}/></button>
             </div>
         </div>
       </main>
@@ -152,81 +239,100 @@ const styles = {
     overflow: 'hidden',
   },
   header: {
-    padding: '15px 20px',
+    padding: '12px 20px',
     backgroundColor: '#111',
-    borderBottom: '1px solid #222',
   },
   headerTop: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '8px',
+    marginBottom: '4px',
   },
   title: {
-    fontSize: '20px',
+    fontSize: '18px',
     fontWeight: '700',
     margin: 0,
-    color: '#fff',
   },
   lockButton: {
     backgroundColor: '#ff3b30',
     color: '#fff',
     border: 'none',
-    padding: '6px 12px',
+    padding: '5px 12px',
     borderRadius: '20px',
-    fontSize: '13px',
+    fontSize: '12px',
     fontWeight: '600',
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
+    gap: '4px',
   },
   statusBadge: {
-    fontSize: '12px',
+    fontSize: '11px',
     color: '#888',
     display: 'flex',
     alignItems: 'center',
-    gap: '6px',
+    gap: '4px',
   },
   statusDot: {
-    width: '8px',
-    height: '8px',
+    width: '6px',
+    height: '6px',
     borderRadius: '50%',
+  },
+  tabs: {
+    display: 'flex',
+    backgroundColor: '#111',
+    borderBottom: '1px solid #222',
+  },
+  tab: {
+    flex: 1,
+    padding: '12px',
+    backgroundColor: 'transparent',
+    border: 'none',
+    fontSize: '14px',
+    fontWeight: '600',
   },
   main: {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
     padding: '15px',
+    gap: '12px',
+    overflowY: 'auto',
+  },
+  tabContent: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
     gap: '15px',
   },
   touchpadContainer: {
     flex: 1,
     display: 'flex',
-    gap: '12px',
+    gap: '10px',
+    minHeight: '200px',
   },
   touchpad: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#111',
     borderRadius: '16px',
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    border: '1px solid #333',
+    border: '1px solid #222',
     touchAction: 'none',
   },
   scrollbar: {
-    width: '50px',
-    backgroundColor: '#1a1a1a',
+    width: '45px',
+    backgroundColor: '#111',
     borderRadius: '16px',
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    border: '1px solid #333',
+    border: '1px solid #222',
     touchAction: 'none',
   },
   scrollIcon: {
-    color: '#444',
-    fontSize: '20px',
+    color: '#333',
+    fontSize: '18px',
   },
   clickGrid: {
     display: 'flex',
@@ -234,34 +340,97 @@ const styles = {
   },
   clickBtn: {
     flex: 1,
-    padding: '18px',
-    backgroundColor: '#222',
+    padding: '16px',
+    backgroundColor: '#1a1a1a',
     color: '#fff',
     border: '1px solid #333',
     borderRadius: '12px',
-    fontSize: '15px',
+    fontSize: '14px',
     fontWeight: '600',
   },
-  controlRow: {
-    display: 'flex',
-    justifyContent: 'center',
+  arrowGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '8px',
+    width: '180px',
+    margin: '0 auto',
+  },
+  controlSection: {
+    backgroundColor: '#111',
+    padding: '15px',
+    borderRadius: '16px',
+    border: '1px solid #222',
+  },
+  sectionTitle: {
+    fontSize: '12px',
+    color: '#666',
+    marginBottom: '10px',
+    textTransform: 'uppercase',
+    letterSpacing: '1px',
   },
   volumeGroup: {
     display: 'flex',
+    justifyContent: 'space-around',
     backgroundColor: '#1a1a1a',
-    borderRadius: '30px',
+    borderRadius: '12px',
     padding: '4px',
-    border: '1px solid #333',
+  },
+  mediaGroup: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: '20px',
+  },
+  mediaBtn: {
+    backgroundColor: '#1a1a1a',
+    border: 'none',
+    color: '#fff',
+    padding: '12px',
+    borderRadius: '50%',
+  },
+  mediaBtnPrimary: {
+    backgroundColor: '#007aff',
+    border: 'none',
+    color: '#fff',
+    padding: '18px',
+    borderRadius: '50%',
+  },
+  brightnessGroup: {
+    display: 'flex',
+    justifyContent: 'space-around',
+    backgroundColor: '#1a1a1a',
+    borderRadius: '12px',
+    padding: '4px',
+  },
+  appGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '12px',
+  },
+  appBtn: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '15px',
+    backgroundColor: '#111',
+    border: '1px solid #222',
+    borderRadius: '16px',
+    color: '#aaa',
+    fontSize: '12px',
   },
   iconBtn: {
-    padding: '12px 20px',
+    flex: 1,
+    padding: '12px',
     backgroundColor: 'transparent',
     color: '#fff',
     border: 'none',
     display: 'flex',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   keyboardArea: {
+    marginTop: 'auto',
     backgroundColor: '#111',
     padding: '12px',
     borderRadius: '16px',
@@ -269,15 +438,15 @@ const styles = {
   },
   inputRow: {
     display: 'flex',
-    gap: '10px',
-    marginBottom: '10px',
+    gap: '8px',
+    marginBottom: '8px',
   },
   textInput: {
     flex: 1,
-    backgroundColor: '#222',
+    backgroundColor: '#1a1a1a',
     border: '1px solid #333',
     color: '#fff',
-    padding: '12px',
+    padding: '10px',
     borderRadius: '8px',
     fontSize: '14px',
   },
@@ -285,21 +454,29 @@ const styles = {
     backgroundColor: '#007aff',
     color: '#fff',
     border: 'none',
-    padding: '0 15px',
+    padding: '0 12px',
     borderRadius: '8px',
-    display: 'flex',
-    alignItems: 'center',
   },
   specialKeys: {
     display: 'flex',
     gap: '8px',
   },
   keyBtn: {
-    flex: 1,
-    backgroundColor: '#222',
+    backgroundColor: '#1a1a1a',
     border: '1px solid #333',
     color: '#aaa',
-    padding: '10px',
+    padding: '12px',
+    borderRadius: '10px',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  keyBtnSmall: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+    border: '1px solid #333',
+    color: '#888',
+    padding: '8px',
     borderRadius: '8px',
     display: 'flex',
     justifyContent: 'center',

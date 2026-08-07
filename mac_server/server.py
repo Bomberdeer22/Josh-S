@@ -7,6 +7,7 @@ import socket
 import threading
 import tkinter as tk
 from tkinter import messagebox
+import subprocess
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -51,7 +52,16 @@ def type_text():
 def press_key():
     data = request.json
     key = data.get('key', '')
-    if key: pyautogui.press(key)
+    if key:
+        pyautogui.press(key)
+    return jsonify({"status": "success"})
+
+@app.route('/shortcut', methods=['POST'])
+def shortcut():
+    data = request.json
+    keys = data.get('keys', [])
+    if keys:
+        pyautogui.hotkey(*keys)
     return jsonify({"status": "success"})
 
 @app.route('/volume', methods=['POST'])
@@ -63,16 +73,46 @@ def volume():
     elif action == 'down':
         os.system("osascript -e 'set volume output volume (output volume of (get volume settings) - 7)'")
     elif action == 'mute':
-        # Toggles mute status
         os.system("osascript -e 'set volume output muted not (output muted of (get volume settings))'")
+    return jsonify({"status": "success"})
+
+@app.route('/brightness', methods=['POST'])
+def brightness():
+    data = request.json
+    action = data.get('action', 'up')
+    if action == 'up':
+        os.system("osascript -e 'tell application \"System Events\" to repeat 2 times \n key code 144 \n end repeat'")
+    elif action == 'down':
+        os.system("osascript -e 'tell application \"System Events\" to repeat 2 times \n key code 145 \n end repeat'")
+    return jsonify({"status": "success"})
+
+@app.route('/media', methods=['POST'])
+def media():
+    data = request.json
+    action = data.get('action', 'play')
+    if action == 'play':
+        pyautogui.press('playpause')
+    elif action == 'next':
+        pyautogui.press('nexttrack')
+    elif action == 'prev':
+        pyautogui.press('prevtrack')
+    return jsonify({"status": "success"})
+
+@app.route('/launch', methods=['POST'])
+def launch():
+    data = request.json
+    app_name = data.get('app', '')
+    if app_name == 'browser':
+        os.system("open -a 'Safari'")
+    elif app_name == 'finder':
+        os.system("open ~")
+    elif app_name == 'spotify':
+        os.system("open -a 'Spotify'")
     return jsonify({"status": "success"})
 
 @app.route('/lock', methods=['POST'])
 def lock_mac():
-    # Attempt to lock the Mac using multiple methods for reliability
-    # Method 1: Sleep the display (usually triggers lock)
     os.system("pmset displaysleepnow")
-    # Method 2: Tell System Events to lock (standard for macOS)
     os.system("osascript -e 'tell application \"System Events\" to lock screen' &")
     return jsonify({"status": "success"})
 
