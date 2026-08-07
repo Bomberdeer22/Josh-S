@@ -28,7 +28,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 def set_mac_brightness(level):
@@ -205,6 +205,26 @@ def update_app():
 def open_settings():
     os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'")
 
+class ModernButton(tk.Frame):
+    def __init__(self, parent, text, command, bg_color, fg_color, font):
+        super().__init__(parent, bg=bg_color, padx=10, pady=5)
+        self.command = command
+        self.label = tk.Label(self, text=text, fg=fg_color, bg=bg_color, font=font)
+        self.label.pack(expand=True, fill='both')
+        self.label.bind("<Button-1>", lambda e: self.command())
+        self.bind("<Button-1>", lambda e: self.command())
+        
+        # Hover effect
+        self.bind("<Enter>", lambda e: self.config(bg=self.lighten(bg_color)))
+        self.label.bind("<Enter>", lambda e: self.config(bg=self.lighten(bg_color)))
+        self.bind("<Leave>", lambda e: self.config(bg=bg_color))
+        self.label.bind("<Leave>", lambda e: self.config(bg=bg_color))
+
+    def lighten(self, hex_color):
+        if hex_color == "#007aff": return "#2691ff"
+        if hex_color == "#222222": return "#333333"
+        return hex_color
+
 def start_gui():
     root = tk.Tk()
     root.title(f"Josh S")
@@ -227,14 +247,14 @@ def start_gui():
     tk.Label(main_frame, text=f"Version {VERSION}", font=("Helvetica", 10), fg="#555555", bg='#000000').pack()
 
     # Status Badge
-    status_frame = tk.Frame(main_frame, bg='#1a1a1a', pady=10, padx=20)
+    status_frame = tk.Frame(main_frame, bg='#111111', pady=10, padx=20)
     status_frame.pack(pady=20, fill='x')
     
     status_color = "#4CAF50" if HAS_PRO_CONTROLLER else "#f44336"
     status_msg = "Pro Engine Active" if HAS_PRO_CONTROLLER else "Standard Mode"
     
-    tk.Label(status_frame, text=status_msg, font=subtitle_font, fg=status_color, bg='#1a1a1a').pack()
-    tk.Label(status_frame, text="Server is Online ✅", font=label_font, fg="#888888", bg='#1a1a1a').pack()
+    tk.Label(status_frame, text=status_msg, font=subtitle_font, fg=status_color, bg='#111111').pack()
+    tk.Label(status_frame, text="Server is Online ✅", font=label_font, fg="#888888", bg='#111111').pack()
 
     # URL Section
     ip_addr = get_ip()
@@ -242,9 +262,9 @@ def start_gui():
     
     tk.Label(main_frame, text="CONNECT YOUR PHONE", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 10))
     
-    entry_url = tk.Entry(main_frame, font=url_font, justify='center', width=18, bd=0, highlightthickness=2, highlightbackground="#333333", bg='#111111', fg="#ffffff", insertbackground="white")
+    entry_url = tk.Entry(main_frame, font=url_font, justify='center', width=18, bd=0, highlightthickness=1, highlightbackground="#222222", bg='#0a0a0a', fg="#ffffff")
     entry_url.insert(0, url)
-    entry_url.config(state='readonly', readonlybackground="#111111")
+    entry_url.config(state='readonly', readonlybackground="#0a0a0a")
     entry_url.pack(pady=5, ipady=10)
 
     tk.Label(main_frame, text="Type this address into your Samsung's browser", font=("Helvetica", 10), fg="#666666", bg='#000000').pack(pady=5)
@@ -253,15 +273,11 @@ def start_gui():
     btn_frame = tk.Frame(main_frame, bg='#000000')
     btn_frame.pack(side='bottom', pady=20, fill='x')
 
-    def style_btn(btn):
-        btn.config(relief='flat', bd=0, highlightthickness=0, pady=10, cursor="hand2")
-
-    update_btn = tk.Button(btn_frame, text="Check for Updates", command=lambda: threading.Thread(target=update_app).start(), bg="#007aff", fg="white", font=("Helvetica", 12, "bold"))
-    style_btn(update_btn)
+    # Modern Custom Buttons (Fix for macOS button color issue)
+    update_btn = ModernButton(btn_frame, "Check for Updates", lambda: threading.Thread(target=update_app).start(), "#007aff", "white", ("Helvetica", 12, "bold"))
     update_btn.pack(side='top', fill='x', pady=5)
 
-    perm_btn = tk.Button(btn_frame, text="Fix Permissions", command=open_settings, bg="#222222", fg="#888888", font=("Helvetica", 11))
-    style_btn(perm_btn)
+    perm_btn = ModernButton(btn_frame, "Fix Permissions", open_settings, "#222222", "#ffffff", ("Helvetica", 11))
     perm_btn.pack(side='top', fill='x', pady=5)
 
     def on_closing(): os._exit(0)
