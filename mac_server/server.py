@@ -31,10 +31,11 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.7.3"
+VERSION = "2.8.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
+active_connections = {} # Stores {ip: {last_seen: time, user_agent: str}}
 
 # --- Advanced Location Engine ---
 if HAS_PRO_CONTROLLER:
@@ -106,22 +107,16 @@ def set_mac_brightness(level):
         except: pass
     os.system(f"osascript -e 'tell application \"System Events\" to set brightness of display 1 to {level}' 2>/dev/null")
 
-# --- Lost Mode ---
-lost_window = None
-def show_lost_screen(message):
-    global lost_window
-    if lost_window: 
-        try: lost_window.destroy()
-        except: pass
-    def create():
-        global lost_window
-        lost_window = tk.Tk()
-        lost_window.attributes('-fullscreen', True, '-topmost', True)
-        lost_window.configure(bg='black')
-        tk.Label(lost_window, text="LOST MACBOOK", font=("Helvetica", 60, "bold"), fg="red", bg="black").pack(expand=True, pady=(100,0))
-        tk.Label(lost_window, text=message, font=("Helvetica", 30), fg="white", bg="black", wraplength=800).pack(expand=True)
-        lost_window.mainloop()
-    threading.Thread(target=create, daemon=True).start()
+# --- APIs ---
+@app.route('/register', methods=['POST'])
+def register():
+    ip = request.remote_addr
+    ua = request.headers.get('User-Agent', 'Unknown Device')
+    # Simple logic to identify Samsung/Android
+    device_name = "Samsung Device" if "Android" in ua else "Mobile Device"
+    active_connections[ip] = {"name": device_name, "last_seen": time.time()}
+    gui_queue.put(('view', 'connections'))
+    return jsonify({"status": "registered"})
 
 @app.route('/lost_info', methods=['GET'])
 def get_lost_info():
@@ -134,24 +129,28 @@ def get_lost_info():
     if lat == 0 or lat is None: lat, lon, status = get_ip_location()
     return jsonify({"battery": percent, "location": status, "lat": lat, "lon": lon, "ip": get_ip()})
 
-# --- APIs ---
 @app.route('/play_noise', methods=['POST'])
 def play_noise():
     os.system("osascript -e 'set volume output volume 100'")
     os.system("afplay /System/Library/Sounds/Sosumi.aiff &")
     return jsonify({"status": "success"})
+
 @app.route('/lost_mode', methods=['POST'])
 def activate_lost_mode():
     show_lost_screen(request.json.get('message', 'Lost device.'))
     return jsonify({"status": "success"})
+
 @app.route('/stop_lost', methods=['POST'])
 def stop_lost():
     gui_queue.put('close_lost')
     return jsonify({"status": "success"})
+
 @app.route('/')
 def index(): return send_from_directory(app.static_folder, 'index.html')
 @app.route('/<path:path>')
 def static_proxy(path): return send_from_directory(app.static_folder, path)
+
+# ... (Standard Control APIs: move, click, scroll, type, key, shortcut, volume, brightness, media, launch, lock, empty_trash)
 @app.route('/move', methods=['POST'])
 def move_mouse():
     pyautogui.moveRel(request.json.get('dx', 0), request.json.get('dy', 0))
@@ -225,6 +224,7 @@ def lock_mac():
 def empty_trash():
     os.system("osascript -e 'tell application \"Finder\" to empty trash' &")
     return jsonify({"status": "success"})
+
 @app.route('/show_window', methods=['POST'])
 def show_window():
     gui_queue.put('toggle')
@@ -276,7 +276,24 @@ class ModernButton(tk.Frame):
         self.label.bind("<Button-1>", lambda e: self.command())
         self.bind("<Button-1>", lambda e: self.command())
 
-# --- Global Window State ---
+# --- Lost Mode Window ---
+lost_window = None
+def show_lost_screen(message):
+    global lost_window
+    if lost_window: 
+        try: lost_window.destroy()
+        except: pass
+    def create():
+        global lost_window
+        lost_window = tk.Tk()
+        lost_window.attributes('-fullscreen', True, '-topmost', True)
+        lost_window.configure(bg='black')
+        tk.Label(lost_window, text="LOST MACBOOK", font=("Helvetica", 60, "bold"), fg="red", bg="black").pack(expand=True, pady=(100,0))
+        tk.Label(lost_window, text=message, font=("Helvetica", 30), fg="white", bg="black", wraplength=800).pack(expand=True)
+        lost_window.mainloop()
+    threading.Thread(target=create, daemon=True).start()
+
+# --- Main GUI ---
 is_visible = True
 
 def start_gui():
@@ -286,63 +303,87 @@ def start_gui():
     root.configure(bg='#000000')
     root.resizable(False, False)
 
-    def auto_hide():
-        global is_visible
-        time.sleep(3)
-        if is_visible: # Only hide if user hasn't toggled it already
-            gui_queue.put('hide')
+    # Frame Switcher
+    container = tk.Frame(root, bg="#000000")
+    container.pack(expand=True, fill='both')
+
+    frames = {}
+
+    def show_frame(name):
+        frame = frames[name]
+        frame.tkraise()
+
+    # Views
+    connect_frame = tk.Frame(container, bg="#000000", padx=30, pady=30)
+    manage_frame = tk.Frame(container, bg="#000000", padx=30, pady=30)
+
+    for f in (connect_frame, manage_frame):
+        f.grid(row=0, column=0, sticky='nsew')
+        f.grid_propagate(False)
+        f.config(width=450, height=580)
+
+    frames['connect'] = connect_frame
+    frames['connections'] = manage_frame
+
+    # --- Connect View ---
+    tk.Label(connect_frame, text="Josh S", font=("Helvetica", 32, "bold"), fg="#ffffff", bg='#000000').pack()
+    tk.Label(connect_frame, text=f"v{VERSION}", font=("Helvetica", 10), fg="#555555", bg='#000000').pack()
+    
+    st_b = tk.Frame(connect_frame, bg='#111111', pady=10, padx=20); st_b.pack(pady=20, fill='x')
+    tk.Label(st_b, text="Ready for Connection", font=("Helvetica", 14), fg="#007aff", bg='#111111').pack()
+    tk.Label(st_b, text="Scan with your phone", font=("Helvetica", 10), fg="#888888", bg='#111111').pack()
+    
+    url = f"http://{get_ip()}:5005"
+    tk.Label(connect_frame, text="CONNECT YOUR PHONE", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 10))
+    e_u = tk.Entry(connect_frame, font=("Courier", 20, "bold"), justify='center', bd=0, bg='#0a0a0a', fg="#ffffff")
+    e_u.insert(0, url); e_u.config(state='readonly'); e_u.pack(pady=5, ipady=10)
+
+    # --- Manage View ---
+    tk.Label(manage_frame, text="Connections", font=("Helvetica", 28, "bold"), fg="#ffffff", bg='#000000').pack()
+    conn_list_frame = tk.Frame(manage_frame, bg="#111111", pady=20, padx=20)
+    conn_list_frame.pack(pady=20, fill='x')
+    
+    conn_label = tk.Label(conn_list_frame, text="1 Active Remote", font=("Helvetica", 16), fg="#4CAF50", bg="#111111")
+    conn_label.pack()
+    
+    device_info_label = tk.Label(conn_list_frame, text="Samsung Device (Connected)", font=("Helvetica", 12), fg="#888888", bg="#111111")
+    device_info_label.pack(pady=5)
+
+    ModernButton(manage_frame, "Add New Device", lambda: show_frame('connect'), "#222222", "#ffffff", ("Helvetica", 12, "bold")).pack(pady=20, fill='x')
+
+    # Bottom Actions (Global)
+    def create_bottom_buttons(parent):
+        btn_f = tk.Frame(parent, bg='#000000'); btn_f.pack(side='bottom', pady=10, fill='x')
+        ModernButton(btn_f, "Check for Updates", lambda: threading.Thread(target=update_app).start(), "#007aff", "white", ("Helvetica", 12, "bold")).pack(side='top', fill='x', pady=5)
+        ModernButton(btn_f, "Hide Window", lambda: gui_queue.put('hide'), "#333333", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
+
+    create_bottom_buttons(connect_frame)
+    create_bottom_buttons(manage_frame)
+
+    show_frame('connect')
 
     def check_queue():
         global lost_window, is_visible
         try:
             msg = gui_queue.get_nowait()
             if msg == 'toggle':
-                if is_visible:
-                    root.withdraw()
-                    is_visible = False
-                else:
-                    root.deiconify()
-                    root.lift()
-                    root.attributes("-topmost", True)
-                    root.attributes("-topmost", False)
-                    is_visible = True
-            elif msg == 'hide':
-                root.withdraw()
-                is_visible = False
+                if is_visible: root.withdraw(); is_visible = False
+                else: root.deiconify(); root.lift(); is_visible = True
+            elif msg == 'hide': root.withdraw(); is_visible = False
             elif msg == 'update': threading.Thread(target=update_app).start()
             elif msg == 'close_lost':
                 if lost_window: lost_window.destroy(); lost_window = None
+            elif isinstance(msg, tuple) and msg[0] == 'view':
+                show_frame(msg[1])
+                # Show window if it was hidden when a device connected
+                root.deiconify(); root.lift(); is_visible = True
             elif msg.startswith('error:'):
                 root.deiconify(); is_visible = True; messagebox.showerror("Josh S Error", msg.replace('error:', ''))
         except queue.Empty: pass
         root.after(100, check_queue)
 
     root.after(100, check_queue)
-    threading.Thread(target=auto_hide, daemon=True).start()
-
-    main_f = tk.Frame(root, bg='#000000', padx=30, pady=30); main_f.pack(expand=True, fill='both')
-    tk.Label(main_f, text="Josh S", font=("Helvetica", 32, "bold"), fg="#ffffff", bg='#000000').pack()
-    tk.Label(main_f, text=f"Version {VERSION}", font=("Helvetica", 10), fg="#555555", bg='#000000').pack()
-    st_b = tk.Frame(main_f, bg='#111111', pady=10, padx=20); st_b.pack(pady=20, fill='x')
-    tk.Label(st_b, text="Tracker Active", font=("Helvetica", 14), fg="#4CAF50", bg='#111111').pack()
-    tk.Label(st_b, text="Dual-Engine Location Ready", font=("Helvetica", 10), fg="#888888", bg='#111111').pack()
-    
-    url = f"http://{get_ip()}:5005"
-    tk.Label(main_f, text="CONNECT YOUR PHONE", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 10))
-    e_u = tk.Entry(main_f, font=("Courier", 20, "bold"), justify='center', bd=0, bg='#0a0a0a', fg="#ffffff")
-    e_u.insert(0, url); e_u.config(state='readonly'); e_u.pack(pady=5, ipady=10)
-    
-    btn_f = tk.Frame(main_f, bg='#000000'); btn_f.pack(side='bottom', pady=10, fill='x')
-    
-    def manual_hide():
-        global is_visible
-        root.withdraw()
-        is_visible = False
-
-    ModernButton(btn_f, "Check for Updates", lambda: threading.Thread(target=update_app).start(), "#007aff", "white", ("Helvetica", 12, "bold")).pack(side='top', fill='x', pady=5)
-    ModernButton(btn_f, "Fix Location Permission", open_settings_location, "#222222", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
-    ModernButton(btn_f, "Hide Window", manual_hide, "#333333", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
-    
+    threading.Thread(target=lambda: (time.sleep(3), gui_queue.put('hide')), daemon=True).start()
     root.mainloop()
 
 if __name__ == '__main__':

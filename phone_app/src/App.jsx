@@ -27,6 +27,17 @@ function App() {
   const volumeTimer = useRef(null);
 
   useEffect(() => {
+    const registerDevice = async () => {
+      try {
+        await fetch('/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device: 'Mobile Remote' }),
+        });
+      } catch (e) {}
+    };
+    registerDevice();
+
     const interval = setInterval(() => {
       if (moveBuffer.current.dx !== 0 || moveBuffer.current.dy !== 0) {
         sendCommand('move', { dx: moveBuffer.current.dx, dy: moveBuffer.current.dy });
