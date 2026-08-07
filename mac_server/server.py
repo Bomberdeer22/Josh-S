@@ -20,7 +20,8 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.3.1"
+VERSION = "1.3.2"
+# Note: This URL will only work if the repository is PUBLIC on GitHub.
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 @app.route('/')
@@ -131,7 +132,18 @@ def run_server():
 def update_app():
     try:
         print("Checking for updates...")
-        r = requests.get(REPO_URL)
+        # Added User-Agent and check for status
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        r = requests.get(REPO_URL, headers=headers, timeout=15)
+        
+        if r.status_code == 404:
+            messagebox.showerror("Update Failed", "GitHub returned a 404 Error.\n\nYour repository is likely PRIVATE. The update button only works if your GitHub repository is PUBLIC.")
+            return
+
+        if not r.ok:
+            messagebox.showerror("Update Failed", f"Network Error: {r.status_code}")
+            return
+
         z = zipfile.ZipFile(io.BytesIO(r.content))
         
         base_path = os.path.dirname(os.path.abspath(__file__))
@@ -159,7 +171,7 @@ def update_app():
 def start_gui():
     root = tk.Tk()
     root.title(f"Josh S v{VERSION}")
-    root.geometry("400x380")
+    root.geometry("400x400")
     root.configure(bg='#121212')
 
     ip_addr = get_ip()
@@ -181,6 +193,8 @@ def start_gui():
     btn_update = tk.Button(root, text="Check for Updates", command=lambda: threading.Thread(target=update_app).start(),
                            bg="#333", fg="white", font=("Arial", 10), padx=10, pady=5)
     btn_update.pack(pady=20)
+    
+    tk.Label(root, text="Note: Updates require a PUBLIC GitHub repo.", font=("Arial", 8), fg="#555", bg='#121212').pack()
 
     def on_closing():
         os._exit(0)
