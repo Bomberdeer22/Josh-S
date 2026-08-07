@@ -15,6 +15,7 @@ import io
 import queue
 import time
 from datetime import datetime
+import json
 
 # Advanced Mac Controllers
 try:
@@ -32,7 +33,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "3.1.2"
+VERSION = "3.2.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
@@ -102,7 +103,7 @@ def get_ip_location():
             city = r.get('city') or 'Unknown'
             if lat and lon: return float(lat), float(lon), f"{city} (IP)"
         except: continue
-    return 51.5074, -0.1278, "Location Unavailable"
+    return 51.5074, -0.1278, "Unknown"
 
 def set_mac_brightness(level):
     level = float(level)
@@ -130,6 +131,7 @@ def admin_dashboard():
 
 @app.route('/api/admin_info')
 def admin_info():
+    # Host Info
     battery_raw = ""
     try: battery_raw = subprocess.check_output(["pmset", "-g", "batt"]).decode()
     except: pass
@@ -137,11 +139,41 @@ def admin_info():
     if "%" in battery_raw:
         try: batt_val = int(battery_raw.split("%")[0].split("\t")[-1])
         except: pass
-    host = {"id": "host", "name": "My MacBook", "type": "macbook", "model": "MacBook Pro", "os": "macOS", "battery": batt_val, "storage": {"used": 450, "total": 1000}, "status": "connected", "lastSeen": "Now", "ip": get_ip()}
+    
+    host = {
+        "id": "host",
+        "name": "My MacBook",
+        "type": "macbook",
+        "model": "MacBook Pro",
+        "os": "macOS",
+        "battery": batt_val,
+        "storage": {"used": 450, "total": 1000},
+        "status": "connected",
+        "lastSeen": "Now",
+        "ip": get_ip()
+    }
+    
     devices = []
     for ip, info in active_connections.items():
-        devices.append({"id": ip, "name": info['name'], "type": "android" if "Samsung" in info['name'] else "iphone", "model": "Remote Device", "os": "Remote OS", "battery": 85, "storage": {"used": 0, "total": 0}, "status": "connected", "lastSeen": "Now", "ip": ip, "specs": info})
-    return jsonify({"host": host, "devices": devices, "activities": activities, "messages": messages[-10:]})
+        devices.append({
+            "id": ip,
+            "name": info.get('name', 'Mobile Device'),
+            "type": "android" if "Samsung" in info.get('model', '') else "iphone",
+            "model": info.get('model', 'Unknown'),
+            "os": info.get('platform', 'Unknown'),
+            "battery": info.get('battery', 0),
+            "storage": info.get('storage', {"used": 0, "total": 0}), # REAL STORAGE
+            "status": "connected",
+            "lastSeen": info.get('connected_at', 'Now'),
+            "ip": ip
+        })
+        
+    return jsonify({
+        "host": host,
+        "devices": devices,
+        "activities": activities,
+        "messages": messages[-10:]
+    })
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -152,11 +184,12 @@ def register():
         "model": specs.get('model', 'Samsung Device'),
         "platform": specs.get('platform', 'Unknown'),
         "battery": specs.get('battery', 0),
+        "storage": specs.get('storage', {"used": 0, "total": 0}), # STORE STORAGE
         "screen": specs.get('screen', 'Unknown'),
         "connected_at": datetime.now().strftime("%H:%M:%S"),
         "last_seen": time.time()
     }
-    add_activity(active_connections[ip]['name'], f"Registered with {specs.get('battery', 0)}% battery", "connect")
+    add_activity(active_connections[ip]['name'], f"Connected • {specs.get('battery', 0)}% Batt", "connect")
     gui_queue.put('refresh_view')
     return jsonify({"status": "registered"})
 
@@ -167,14 +200,14 @@ def broadcast():
     sender = active_connections.get(ip, {}).get('name', ip)
     new_msg = {"sender": sender, "content": msg, "time": datetime.now().strftime("%H:%M:%S")}
     messages.append(new_msg)
-    add_activity(sender, f"Broadcast: {msg}", "sync")
+    add_activity(sender, f"Chat: {msg}", "sync")
     return jsonify({"status": "sent"})
 
 @app.route('/messages', methods=['GET'])
 def get_messages():
     return jsonify({"messages": messages[-20:], "devices": active_connections})
 
-# Controls
+# Standard Controls
 @app.route('/move', methods=['POST'])
 def move_mouse():
     pyautogui.moveRel(request.json.get('dx', 0), request.json.get('dy', 0))
@@ -194,12 +227,12 @@ def type_text():
 @app.route('/key', methods=['POST'])
 def press_key():
     k = request.json.get('key', '')
-    if k: pyautogui.press(k); add_activity("Remote", f"Pressed key: {k}", "sync")
+    if k: pyautogui.press(k)
     return jsonify({"status": "success"})
 @app.route('/shortcut', methods=['POST'])
 def shortcut():
     k = request.json.get('keys', [])
-    if k: pyautogui.hotkey(*k); add_activity("Remote", f"Triggered shortcut: {'+'.join(k)}", "sync")
+    if k: pyautogui.hotkey(*k)
     return jsonify({"status": "success"})
 @app.route('/volume', methods=['POST'])
 def volume():
@@ -237,12 +270,10 @@ def launch():
     if app_n == 'browser': os.system("open -a 'Google Chrome' || open -a 'Safari'")
     elif app_n == 'finder': os.system("open ~")
     elif app_n.lower() == 'spotify': os.system("open -a 'Spotify'")
-    add_activity("Remote", f"Launched {app_n}", "upload")
     return jsonify({"status": "success"})
 @app.route('/lock', methods=['POST'])
 def lock_mac():
     os.system("pmset displaysleepnow; osascript -e 'tell application \"System Events\" to lock screen' &")
-    add_activity("Remote", "Locked MacBook", "alert")
     return jsonify({"status": "success"})
 @app.route('/empty_trash', methods=['POST'])
 def empty_trash():
@@ -270,7 +301,6 @@ def get_lost_info():
 @app.route('/lost_mode', methods=['POST'])
 def activate_lost_mode():
     show_lost_screen(request.json.get('message', 'Lost.'))
-    add_activity("Remote", "Activated Lost Mode", "alert")
     return jsonify({"status": "success"})
 
 @app.route('/stop_lost', methods=['POST'])
@@ -291,25 +321,19 @@ def run_server():
 
 def update_app():
     try:
-        # Check for Trash
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        if ".Trash" in base_path:
-            messagebox.showerror("Update Blocked", "You are running Josh S from the Trash folder! Move the app to Applications before updating.")
-            return
-
         r = requests.get(REPO_URL, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
         z = zipfile.ZipFile(io.BytesIO(r.content))
-        temp_dir = os.path.join(base_path, "temp_update")
-        if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
-        os.makedirs(temp_dir); z.extractall(temp_dir)
-        root_folder = os.listdir(temp_dir)[0]
-        new_server_dir = os.path.join(temp_dir, root_folder, "mac_server")
-        shutil.copy2(os.path.join(new_server_dir, "server.py"), os.path.join(base_path, "server.py"))
-        static_dest = os.path.join(base_path, "static")
-        if os.path.exists(static_dest): shutil.rmtree(static_dest)
-        shutil.copytree(os.path.join(new_server_dir, "static"), static_dest)
-        shutil.rmtree(temp_dir)
-        messagebox.showinfo("Update Complete", "Josh S updated! Restarting...")
+        base = os.path.dirname(os.path.abspath(__file__))
+        temp = os.path.join(base, "temp_update")
+        if os.path.exists(temp): shutil.rmtree(temp)
+        os.makedirs(temp); z.extractall(temp)
+        root_f = os.listdir(temp)[0]
+        new_s = os.path.join(temp, root_f, "mac_server")
+        shutil.copy2(os.path.join(new_s, "server.py"), os.path.join(base, "server.py"))
+        sd = os.path.join(base, "static")
+        if os.path.exists(sd): shutil.rmtree(sd)
+        shutil.copytree(os.path.join(new_s, "static"), sd)
+        shutil.rmtree(temp)
         try: subprocess.Popen(["open", "-n", "/Applications/Josh S.app"])
         except: pass
         os._exit(0)
@@ -338,17 +362,13 @@ def show_lost_screen(message):
         lost_window.mainloop()
     threading.Thread(target=create, daemon=True).start()
 
-def open_settings(): os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices'")
-
 def start_gui():
     root = tk.Tk()
     root.title(f"Josh S Setup")
     root.geometry("450x650")
     root.configure(bg='#000000')
     root.resizable(False, False)
-    
     def auto_hide(): time.sleep(3); gui_queue.put('hide')
-    
     def check_queue():
         global lost_window
         try:
@@ -365,7 +385,6 @@ def start_gui():
                 root.deiconify(); messagebox.showerror("Josh S Error", msg.replace('error:', ''))
         except queue.Empty: pass
         root.after(100, check_queue)
-
     root.after(100, check_queue)
     threading.Thread(target=auto_hide, daemon=True).start()
 
@@ -383,16 +402,14 @@ def start_gui():
             tk.Label(main_container, text="URL FOR PHONE", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 5))
             e_u = tk.Entry(main_container, font=("Courier", 22, "bold"), justify='center', bd=0, bg='#0a0a0a', fg="#ffffff")
             e_u.insert(0, url); e_u.config(state='readonly'); e_u.pack(pady=10, ipady=15, fill='x')
-            ModernButton(main_container, "View Dashboard", lambda: set_view("manage"), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=20, fill='x')
+            ModernButton(main_container, "View Connections", lambda: set_view("manage"), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=20, fill='x')
         else:
-            tk.Label(main_container, text="Connections", font=("Helvetica", 28, "bold"), fg="#ffffff", bg='#000000').pack(pady=(0, 20))
-            if not active_connections:
-                tk.Label(main_container, text="No devices connected", font=("Helvetica", 14), fg="#444", bg="#000000").pack(pady=50)
+            tk.Label(main_container, text="Active Devices", font=("Helvetica", 28, "bold"), fg="#ffffff", bg='#000000').pack(pady=(0, 20))
             for ip, info in active_connections.items():
                 card = tk.Frame(main_container, bg="#111111", pady=10, padx=15); card.pack(fill='x', pady=5)
-                tk.Label(card, text=f"{info['name']} ({info.get('battery', '??')}%)", font=("Helvetica", 14, "bold"), fg="#ffffff", bg="#111111").pack(anchor='w')
-                tk.Label(card, text=f"IP: {ip}", font=("Helvetica", 9), fg="#888888", bg="#111111").pack(anchor='w')
-            ModernButton(main_container, "Open Full Dashboard", lambda: os.system("open http://localhost:5005/admin"), "#007aff", "white", ("Helvetica", 12, "bold")).pack(pady=20, fill='x')
+                tk.Label(card, text=f"{info['name']} • {info.get('battery', 0)}% Batt", font=("Helvetica", 14, "bold"), fg="#ffffff", bg="#111111").pack(anchor='w')
+                tk.Label(card, text=f"IP: {ip} • {info.get('platform', '??')}", font=("Helvetica", 9), fg="#888888", bg="#111111").pack(anchor='w')
+            ModernButton(main_container, "Open Web Dashboard", lambda: os.system("open http://localhost:5005/admin"), "#007aff", "white", ("Helvetica", 12, "bold")).pack(pady=20, fill='x')
             ModernButton(main_container, "Back to Pairing", lambda: set_view("connect"), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=5, fill='x')
         footer = tk.Frame(main_container, bg='#000000'); footer.pack(side='bottom', fill='x')
         ModernButton(footer, "Update", lambda: threading.Thread(target=update_app).start(), "#1a1a1a", "#888888", ("Helvetica", 10)).pack(side='left', expand=True, padx=2)

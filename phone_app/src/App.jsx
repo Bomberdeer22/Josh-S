@@ -17,6 +17,8 @@ function App() {
   const [volume, setVolume] = useState(50);
   const [lostMsg, setLostMsg] = useState('This Mac is lost. Please return to Josh S.');
   const [lostInfo, setLostInfo] = useState({ battery: '--', location: 'Fetching...', lat: 0, lon: 0 });
+  const [broadcastMsg, setBroadcastMsg] = useState('');
+  const [messages, setMessages] = useState([]);
   
   const lastPos = useRef({ x: 0, y: 0 });
   const moveBuffer = useRef({ dx: 0, dy: 0 });
@@ -29,20 +31,30 @@ function App() {
   useEffect(() => {
     const registerDevice = async () => {
       try {
-        let batteryInfo = { level: 1, charging: false };
+        let batteryLevel = 0;
         try {
           if ('getBattery' in navigator) {
-            const batt = await navigator.getBattery();
-            batteryInfo = { level: batt.level, charging: batt.charging };
+            const batt = await (navigator).getBattery();
+            batteryLevel = Math.round(batt.level * 100);
           }
         } catch (e) {}
 
+        let storageInfo = { used: 0, total: 0 };
+        try {
+            if ('storage' in navigator && 'estimate' in navigator.storage) {
+                const estimate = await navigator.storage.estimate();
+                storageInfo.used = Math.round((estimate.usage || 0) / (1024 * 1024)); // MB
+                // Note: True total storage is impossible on web, we use 128 as a default Samsung guess
+                storageInfo.total = 128; 
+            }
+        } catch (e) {}
+
         const specs = {
-          model: navigator.userAgent.includes('Android') ? 'Samsung/Android' : 'iOS Device',
+          model: navigator.userAgent.includes('Android') ? 'Samsung Galaxy' : 'Mobile Remote',
           platform: navigator.platform,
-          battery: Math.round(batteryInfo.level * 100),
-          screen: `${window.screen.width}x${window.screen.height}`,
-          language: navigator.language
+          battery: batteryLevel,
+          storage: storageInfo,
+          screen: `${window.screen.width}x${window.screen.height}`
         };
 
         await fetch('/register', {
@@ -54,6 +66,17 @@ function App() {
     };
     registerDevice();
 
+    const fetchMessages = async () => {
+      try {
+        const res = await fetch('/messages');
+        if (res.ok) {
+          const data = await res.json();
+          setMessages(data.messages);
+        }
+      } catch (e) {}
+    };
+    const msgInterval = setInterval(fetchMessages, 3000);
+
     const interval = setInterval(() => {
       if (moveBuffer.current.dx !== 0 || moveBuffer.current.dy !== 0) {
         sendCommand('move', { dx: moveBuffer.current.dx, dy: moveBuffer.current.dy });
@@ -64,7 +87,7 @@ function App() {
         scrollBuffer.current = 0;
       }
     }, 30);
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); clearInterval(msgInterval); };
   }, []);
 
   const sendCommand = async (endpoint, data = {}, method = 'POST') => {
@@ -74,7 +97,6 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
       };
       if (method === 'POST') options.body = JSON.stringify(data);
-      
       const response = await fetch(`/${endpoint}`, options);
       if (response.ok) {
           setStatus('Connected');
@@ -83,12 +105,15 @@ function App() {
               setLostInfo(info);
           }
       } else setStatus('Error');
-    } catch (e) {
-      setStatus('Offline');
-    }
+    } catch (e) { setStatus('Offline'); }
   };
 
-  const fetchLostInfo = () => sendCommand('lost_info', {}, 'GET');
+  const sendBroadcast = async (e) => {
+    e.preventDefault();
+    if (!broadcastMsg) return;
+    await sendCommand('broadcast', { message: broadcastMsg });
+    setBroadcastMsg('');
+  };
 
   const handleBrightnessChange = (e) => {
     const val = parseFloat(e.target.value);
@@ -136,30 +161,6 @@ function App() {
 
   const handleTouchEnd = () => { lastPos.current = { x: 0, y: 0 }; };
 
-  const [broadcastMsg, setBroadcastMsg] = useState('');
-  const [messages, setMessages] = useState([]);
-
-  useEffect(() => {
-    const fetchMessages = async () => {
-      try {
-        const res = await fetch('/messages');
-        if (res.ok) {
-          const data = await res.json();
-          setMessages(data.messages);
-        }
-      } catch (e) {}
-    };
-    const msgInterval = setInterval(fetchMessages, 3000);
-    return () => clearInterval(msgInterval);
-  }, []);
-
-  const sendBroadcast = async (e) => {
-    e.preventDefault();
-    if (!broadcastMsg) return;
-    await sendCommand('broadcast', { message: broadcastMsg });
-    setBroadcastMsg('');
-  };
-
   const handleTextSubmit = (e) => {
     e.preventDefault();
     if (text) {
@@ -174,15 +175,9 @@ function App() {
         <div style={styles.headerTop}>
           <h1 style={styles.title}>Josh S</h1>
           <div style={styles.headerBtns}>
-              <button style={styles.headerBtn} onClick={() => window.location.reload()}>
-                <RefreshCw size={16} /> Refresh
-              </button>
-              <button style={styles.headerBtn} onClick={() => sendCommand('show_window')}>
-                <Eye size={16} /> Show
-              </button>
-              <button style={{...styles.headerBtn, backgroundColor: '#ff3b30'}} onClick={() => sendCommand('lock')}>
-                <Lock size={16} /> Lock
-              </button>
+              <button style={styles.headerBtn} onClick={() => window.location.reload()}><RefreshCw size={16} /> Refresh</button>
+              <button style={styles.headerBtn} onClick={() => sendCommand('show_window')}><Eye size={16} /> Show</button>
+              <button style={{...styles.headerBtn, backgroundColor: '#ff3b30'}} onClick={() => sendCommand('lock')}><Lock size={16} /> Lock</button>
           </div>
         </div>
         <div style={styles.statusBadge}>
@@ -195,7 +190,7 @@ function App() {
         <button style={{...styles.tab, color: activeTab === 'mouse' ? '#007aff' : '#888', borderBottom: activeTab === 'mouse' ? '2px solid #007aff' : 'none'}} onClick={() => setActiveTab('mouse')}>Mouse</button>
         <button style={{...styles.tab, color: activeTab === 'media' ? '#007aff' : '#888', borderBottom: activeTab === 'media' ? '2px solid #007aff' : 'none'}} onClick={() => setActiveTab('media')}>Media</button>
         <button style={{...styles.tab, color: activeTab === 'apps' ? '#007aff' : '#888', borderBottom: activeTab === 'apps' ? '2px solid #007aff' : 'none'}} onClick={() => setActiveTab('apps')}>Apps</button>
-        <button style={{...styles.tab, color: activeTab === 'lost' ? '#ff3b30' : '#888', borderBottom: activeTab === 'lost' ? '2px solid #ff3b30' : 'none'}} onClick={() => { setActiveTab('lost'); fetchLostInfo(); }}>Lost</button>
+        <button style={{...styles.tab, color: activeTab === 'lost' ? '#ff3b30' : '#888', borderBottom: activeTab === 'lost' ? '2px solid #ff3b30' : 'none'}} onClick={() => { setActiveTab('lost'); sendCommand('lost_info', {}, 'GET'); }}>Lost</button>
       </nav>
 
       <main style={styles.main}>
@@ -258,28 +253,24 @@ function App() {
         {activeTab === 'apps' && (
           <div style={styles.tabContent}>
             <div style={styles.appGrid}>
-              <button style={styles.appBtn} onClick={() => sendCommand('launch', { app: 'browser' })}><Globe size={24} /><span>Safari/Chrome</span></button>
+              <button style={styles.appBtn} onClick={() => sendCommand('launch', { app: 'browser' })}><Globe size={24} /><span>Browser</span></button>
               <button style={styles.appBtn} onClick={() => sendCommand('launch', { app: 'spotify' })}><Music size={24} color="#1DB954" /><span>Spotify</span></button>
               <button style={styles.appBtn} onClick={() => sendCommand('launch', { app: 'finder' })}><FolderOpen size={24} /><span>Finder</span></button>
               <button style={styles.appBtn} onClick={() => sendCommand('shortcut', { keys: ['command', 'space'] })}><Search size={24} /><span>Spotlight</span></button>
               <button style={styles.appBtn} onClick={() => sendCommand('shortcut', { keys: ['command', 'tab'] })}><LayoutGrid size={24} /><span>Switch App</span></button>
               <button style={styles.appBtn} onClick={() => sendCommand('key', { key: 'f11' })}><Monitor size={24} /><span>Desktop</span></button>
               <button style={{...styles.appBtn, color: '#ff3b30'}} onClick={() => { if(window.confirm("Empty trash?")) sendCommand('empty_trash') }}><Trash2 size={24} color="#ff3b30" /><span>Empty Trash</span></button>
-              <button style={styles.appBtn} onClick={() => sendCommand('shortcut', { keys: ['command', 'q'] })}><X size={24} color="#ff3b30" /><span>Quit App</span></button>
               <button style={{...styles.appBtn, border: '1px solid #007aff'}} onClick={() => sendCommand('update')}><RefreshCw size={24} color="#007aff" /><span style={{color: '#007aff'}}>Update Mac</span></button>
             </div>
-
             <div style={styles.controlSection}>
               <p style={styles.sectionTitle}>Global Device Chat</p>
               <div style={styles.msgFeed}>
                 {messages.map((m, i) => (
-                  <div key={i} style={styles.msgItem}>
-                    <span style={styles.msgSender}>{m.sender}:</span> {m.content}
-                  </div>
+                  <div key={i} style={styles.msgItem}><span style={styles.msgSender}>{m.sender}:</span> {m.content}</div>
                 ))}
               </div>
               <form onSubmit={sendBroadcast} style={styles.inputRow}>
-                <input style={styles.textInput} value={broadcastMsg} onChange={(e) => setBroadcastMsg(e.target.value)} placeholder="Message all devices..." />
+                <input style={styles.textInput} value={broadcastMsg} onChange={(e) => setBroadcastMsg(e.target.value)} placeholder="Broadcast message..." />
                 <button type="submit" style={styles.sendBtn}><Send size={18}/></button>
               </form>
             </div>
@@ -290,33 +281,23 @@ function App() {
           <div style={styles.tabContent}>
             <div style={styles.infoCard}>
                 <div style={styles.infoItem}><Battery color="#4CAF50" /> <div><p style={styles.infoLabel}>Battery</p><strong>{lostInfo.battery}</strong></div></div>
-                <div style={styles.infoItem}><MapPin color="#ff3b30" /> <div><p style={styles.infoLabel}>Location (via IP)</p><strong>{lostInfo.location}</strong></div></div>
-                
+                <div style={styles.infoItem}><MapPin color="#ff3b30" /> <div><p style={styles.infoLabel}>Location</p><strong>{lostInfo.location}</strong></div></div>
                 {lostInfo.lat !== 0 && (
                    <div style={styles.mapContainer}>
-                      <img 
-                        style={styles.mapImg} 
-                        src={`https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lostInfo.lon},${lostInfo.lat}&z=13&l=map&size=450,200&pt=${lostInfo.lon},${lostInfo.lat},pm2rdl`} 
-                        alt="Location Map"
-                      />
-                      <button style={styles.mapLink} onClick={() => window.open(`https://www.google.com/maps?q=${lostInfo.lat},${lostInfo.lon}`, '_blank')}>
-                         <ExternalLink size={14} /> Open in Google Maps
-                      </button>
+                      <img style={styles.mapImg} src={`https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lostInfo.lon},${lostInfo.lat}&z=13&l=map&size=450,200&pt=${lostInfo.lon},${lostInfo.lat},pm2rdl`} alt="Map" />
+                      <button style={styles.mapLink} onClick={() => window.open(`https://www.google.com/maps?q=${lostInfo.lat},${lostInfo.lon}`, '_blank')}><ExternalLink size={14} /> Open in Maps</button>
                    </div>
                 )}
-                
-                <button style={styles.refreshBtn} onClick={fetchLostInfo}><RefreshCw size={14} /> Refresh Location & Info</button>
+                <button style={styles.refreshBtn} onClick={() => sendCommand('lost_info', {}, 'GET')}><RefreshCw size={14} /> Refresh Info</button>
             </div>
-
             <div style={styles.controlSection}>
                 <p style={styles.sectionTitle}>Lost Mode Controls</p>
                 <div style={styles.lostActions}>
                     <button style={styles.noiseBtn} onClick={() => sendCommand('play_noise')}><AlertCircle size={20} /> Play Loud Sound</button>
                     <div style={styles.msgBox}>
-                        <textarea style={styles.msgInput} value={lostMsg} onChange={(e) => setLostMsg(e.target.value)} placeholder="Type a message for the finder..." />
+                        <textarea style={styles.msgInput} value={lostMsg} onChange={(e) => setLostMsg(e.target.value)} />
                         <button style={styles.activateBtn} onClick={() => sendCommand('lost_mode', { message: lostMsg })}><ShieldAlert size={18}/> Activate Lost Mode</button>
                     </div>
-                    <button style={styles.stopBtn} onClick={() => sendCommand('stop_lost')}>Stop Lost Mode (Dismiss Screen)</button>
                 </div>
             </div>
           </div>
@@ -378,21 +359,19 @@ const styles = {
   mapImg: { width: '100%', height: 'auto', display: 'block' },
   mapLink: { width: '100%', padding: '10px', backgroundColor: '#222', border: 'none', color: '#007aff', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' },
   refreshBtn: { backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px', fontSize: '12px', marginTop: '10px' },
-  lostActions: { display: 'flex', flexDirection: 'column', gap: '15px' },
   msgFeed: { backgroundColor: '#0a0a0a', borderRadius: '8px', padding: '10px', height: '120px', overflowY: 'auto', marginBottom: '10px', display: 'flex', flexDirection: 'column', gap: '5px' },
   msgItem: { fontSize: '11px', color: '#ccc' },
   msgSender: { color: '#007aff', fontWeight: 'bold', marginRight: '5px' },
+  lostActions: { display: 'flex', flexDirection: 'column', gap: '15px' },
   noiseBtn: { backgroundColor: '#ff3b30', color: '#fff', border: 'none', borderRadius: '12px', padding: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' },
   msgBox: { display: 'flex', flexDirection: 'column', gap: '10px' },
   msgInput: { backgroundColor: '#222', border: '1px solid #333', color: '#fff', padding: '10px', borderRadius: '8px', minHeight: '60px' },
   activateBtn: { backgroundColor: '#fff', color: '#000', border: 'none', borderRadius: '12px', padding: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' },
-  stopBtn: { backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '12px', padding: '10px', fontSize: '12px' },
   keyboardArea: { marginTop: 'auto', backgroundColor: '#111', padding: '12px', borderRadius: '16px', border: '1px solid #222' },
   inputRow: { display: 'flex', gap: '8px', marginBottom: '8px' },
   textInput: { flex: 1, backgroundColor: '#1a1a1a', border: '1px solid #333', color: '#fff', padding: '10px', borderRadius: '8px', fontSize: '14px' },
   sendBtn: { backgroundColor: '#007aff', color: '#fff', border: 'none', padding: '0 12px', borderRadius: '8px' },
   specialKeys: { display: 'flex', gap: '8px' },
-  keyBtn: { backgroundColor: '#1a1a1a', border: '1px solid #333', color: '#aaa', padding: '12px', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center' },
   keyBtnSmall: { flex: 1, backgroundColor: '#1a1a1a', border: '1px solid #333', color: '#888', padding: '8px', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center' }
 };
 
