@@ -15,11 +15,12 @@ import io
 import queue
 import time
 
-# Hardware-level controller
+# Advanced Mac Controllers
 try:
     import objc
     import Quartz
     from Foundation import NSBundle
+    import CoreLocation
     HAS_PRO_CONTROLLER = True
 except ImportError:
     HAS_PRO_CONTROLLER = False
@@ -30,10 +31,56 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.5.0"
+VERSION = "2.5.1"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
+
+# --- High Precision Location Engine ---
+class LocationManager(object):
+    def __init__(self):
+        self.loc_data = {"lat": 0, "lon": 0, "status": "Initializing"}
+        if HAS_PRO_CONTROLLER:
+            try:
+                self.manager = CoreLocation.CLLocationManager.alloc().init()
+                self.delegate = LocationDelegate.alloc().initWithManager_(self)
+                self.manager.setDelegate_(self.delegate)
+            except:
+                self.loc_data["status"] = "Hardware error"
+
+    def get_coords(self):
+        if not HAS_PRO_CONTROLLER:
+            return 0, 0, "Hardware not supported"
+        
+        # Trigger a fresh scan
+        self.manager.startUpdatingLocation()
+        # Give it 2 seconds to scan Wi-Fi networks
+        time.sleep(2)
+        self.manager.stopUpdatingLocation()
+        
+        return self.loc_data["lat"], self.loc_data["lon"], self.loc_data["status"]
+
+if HAS_PRO_CONTROLLER:
+    class LocationDelegate(CoreLocation.NSObject):
+        def initWithManager_(self, parent):
+            self = objc.super(LocationDelegate, self).init()
+            if self is None: return None
+            self.parent = parent
+            return self
+
+        def locationManager_didUpdateLocations_(self, manager, locations):
+            loc = locations.lastObject()
+            coord = loc.coordinate()
+            self.parent.loc_data["lat"] = coord.latitude
+            self.parent.loc_data["lon"] = coord.longitude
+            self.parent.loc_data["status"] = "High Precision (CoreLocation)"
+
+        def locationManager_didFailWithError_(self, manager, error):
+            self.parent.loc_data["status"] = f"Location denied or unavailable"
+
+loc_manager = None
+if HAS_PRO_CONTROLLER:
+    loc_manager = LocationManager()
 
 def set_mac_brightness(level):
     level = float(level)
@@ -70,39 +117,35 @@ def show_lost_screen(message):
         lost_window.attributes('-fullscreen', True)
         lost_window.attributes('-topmost', True)
         lost_window.configure(bg='black')
-        
-        lbl = tk.Label(lost_window, text="LOST MACBOOK", font=("Helvetica", 60, "bold"), fg="red", bg="black")
-        lbl.pack(expand=True, pady=(100, 0))
-        
-        msg = tk.Label(lost_window, text=message, font=("Helvetica", 30), fg="white", bg="black", wraplength=800)
-        msg.pack(expand=True)
-        
+        tk.Label(lost_window, text="LOST MACBOOK", font=("Helvetica", 60, "bold"), fg="red", bg="black").pack(expand=True, pady=(100, 0))
+        tk.Label(lost_window, text=message, font=("Helvetica", 30), fg="white", bg="black", wraplength=800).pack(expand=True)
         tk.Label(lost_window, text="This Mac is being tracked.", font=("Helvetica", 18), fg="#444", bg="black").pack(side='bottom', pady=50)
-        
         lost_window.mainloop()
 
     threading.Thread(target=create_window, daemon=True).start()
 
 @app.route('/lost_info', methods=['GET'])
 def get_lost_info():
-    # Battery
-    battery_raw = subprocess.check_output(["pmset", "-g", "batt"]).decode()
-    percent = "Unknown"
-    if "%" in battery_raw:
-        percent = battery_raw.split("%")[0].split("\t")[-1] + "%"
-    
-    # Precise Location using ip-api.com (No API key required for basic usage)
-    lat, lon = 0, 0
-    location_name = "Location Unavailable"
+    # 1. Battery
     try:
-        # Use a more reliable free geo-ip service
-        r = requests.get("http://ip-api.com/json/", timeout=5).json()
-        if r.get('status') == 'success':
-            lat = r.get('lat')
-            lon = r.get('lon')
-            location_name = f"{r.get('city')}, {r.get('regionName')}, {r.get('country')}"
-    except Exception as e:
-        print(f"Location Error: {e}")
+        battery_raw = subprocess.check_output(["pmset", "-g", "batt"]).decode()
+        percent = battery_raw.split("%")[0].split("\t")[-1] + "%" if "%" in battery_raw else "Unknown"
+    except: percent = "--"
+    
+    # 2. Precise Location (CoreLocation)
+    lat, lon, status = 0, 0, "Scanning..."
+    if loc_manager:
+        lat, lon, status = loc_manager.get_coords()
+
+    # 3. Fallback to IP if CoreLocation fails
+    location_name = status
+    if lat == 0:
+        try:
+            r = requests.get("http://ip-api.com/json/", timeout=5).json()
+            if r.get('status') == 'success':
+                lat, lon = r.get('lat'), r.get('lon')
+                location_name = f"{r.get('city')} (IP-Based Fallback)"
+        except: pass
         
     return jsonify({
         "battery": percent,
@@ -115,7 +158,6 @@ def get_lost_info():
 @app.route('/play_noise', methods=['POST'])
 def play_noise():
     os.system("osascript -e 'set volume output volume 100'")
-    os.system("osascript -e 'beep 3'")
     os.system("afplay /System/Library/Sounds/Sosumi.aiff &")
     os.system("afplay /System/Library/Sounds/Sosumi.aiff &")
     return jsonify({"status": "success"})
@@ -123,13 +165,11 @@ def play_noise():
 @app.route('/lost_mode', methods=['POST'])
 def activate_lost_mode():
     data = request.json
-    msg = data.get('message', 'Please return this device.')
-    show_lost_screen(msg)
+    show_lost_screen(data.get('message', 'Please return this device.'))
     return jsonify({"status": "success"})
 
 @app.route('/stop_lost', methods=['POST'])
 def stop_lost():
-    global lost_window
     gui_queue.put('close_lost')
     return jsonify({"status": "success"})
 
@@ -199,10 +239,8 @@ def media():
             if "success" not in result.stdout: pyautogui.press('space')
         elif action == 'next': os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"document.querySelector(\\\".ytp-next-button\\\")?.click()\"' 2>/dev/null")
         elif action == 'prev': os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"window.history.back()\"' 2>/dev/null")
-    elif target == "spotify":
-        os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
-    elif target == "music":
-        os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
+    elif target == "spotify": os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
+    elif target == "music": os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
     else:
         cmd_key = {'play': 'playpause', 'next': 'nexttrack', 'prev': 'prevtrack'}[action]
         pyautogui.press(cmd_key)
@@ -335,9 +373,9 @@ def start_gui():
     status_badge = tk.Frame(main_frame, bg='#111111', pady=10, padx=20)
     status_badge.pack(pady=20, fill='x')
     status_color = "#4CAF50" if HAS_PRO_CONTROLLER else "#f44336"
-    status_msg = "Pro Engine Active" if HAS_PRO_CONTROLLER else "Standard Mode"
+    status_msg = "Tracker Active ✅" if HAS_PRO_CONTROLLER else "Tracker Error"
     tk.Label(status_badge, text=status_msg, font=subtitle_font, fg=status_color, bg='#111111').pack()
-    tk.Label(status_badge, text="Server is Online ✅", font=label_font, fg="#888888", bg='#111111').pack()
+    tk.Label(status_badge, text="High-Precision GPS/WiFi Engine", font=label_font, fg="#888888", bg='#111111').pack()
 
     ip_addr = get_ip()
     url = f"http://{ip_addr}:5005"
@@ -346,8 +384,6 @@ def start_gui():
     entry_url.insert(0, url)
     entry_url.config(state='readonly', readonlybackground="#0a0a0a")
     entry_url.pack(pady=5, ipady=10)
-
-    tk.Label(main_frame, text="Type this address into your Samsung's browser", font=("Helvetica", 10), fg="#666666", bg='#000000').pack(pady=5)
 
     btn_frame = tk.Frame(main_frame, bg='#000000')
     btn_frame.pack(side='bottom', pady=20, fill='x')
