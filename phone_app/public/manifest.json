@@ -1,0 +1,15 @@
+{
+  "short_name": "Josh S",
+  "name": "Josh S Remote Control",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#121212",
+  "background_color": "#121212"
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Search,
@@ -10,14 +10,19 @@ import {
   SlidersHorizontal,
   Laptop,
   ChevronDown,
+  Monitor,
+  Smartphone,
+  Watch,
+  Trash2,
+  Lock,
+  ExternalLink
 } from 'lucide-react';
-import { hostDevice, connectedDevices, recentActivity } from './data/devices';
-import type { Device, ConnectionStatus } from './data/devices';
+// import { hostDevice, connectedDevices, recentActivity } from './data/devices';
+import type { Device, ConnectionStatus, Activity } from './data/devices';
 import HostCard from './components/HostCard';
 import DeviceCard from './components/DeviceCard';
 import DeviceDetailPanel from './components/DeviceDetailPanel';
 import ActivityFeed from './components/ActivityFeed';
-
 
 type ViewMode = 'grid' | 'list';
 type FilterStatus = 'all' | ConnectionStatus;
@@ -28,19 +33,65 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [showFilter, setShowFilter] = useState(false);
+  const [data, setData] = useState<{host: Device, devices: Device[], activities: Activity[]}>({
+    host: {
+      id: 'host',
+      name: 'MacBook',
+      type: 'macbook',
+      model: 'MacBook Pro',
+      os: 'macOS',
+      battery: 0,
+      storage: { used: 0, total: 100 },
+      status: 'connected',
+      lastSeen: 'Now',
+      ip: '127.0.0.1'
+    },
+    devices: [],
+    activities: []
+  });
 
-  const filteredDevices = connectedDevices.filter((device) => {
+  const fetchData = async () => {
+    try {
+      const res = await fetch('/api/admin_info');
+      if (res.ok) {
+        const json = await res.json();
+        setData(json);
+      }
+    } catch (e) {
+      console.error("Failed to fetch admin info", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const filteredDevices = (data.devices || []).filter((device) => {
+    if (!device) return false;
     const matchesSearch =
-      device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      device.model.toLowerCase().includes(searchQuery.toLowerCase());
+      (device.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (device.model || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = filterStatus === 'all' || device.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
-  const onlineCount = connectedDevices.filter((d) => d.status !== 'disconnected').length;
+  const onlineCount = (data.devices || []).filter((d) => d && d.status !== 'disconnected').length;
+
+  const triggerAction = async (endpoint: string, payload = {}) => {
+    try {
+      await fetch(`/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      fetchData();
+    } catch (e) {}
+  };
 
   return (
-    <div className="relative min-h-screen bg-[#08081a] text-white overflow-hidden">
+    <div className="relative min-h-screen bg-[#08081a] text-white overflow-hidden font-sans">
       {/* === BACKGROUND GRADIENTS === */}
       <div className="fixed inset-0 pointer-events-none">
         {/* Primary gradient */}
@@ -100,7 +151,7 @@ export default function App() {
         {/* Page Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
           {/* Host device card */}
-          <HostCard device={hostDevice} connectedCount={onlineCount} />
+          <HostCard device={data.host} connectedCount={onlineCount} />
 
 
 
@@ -114,7 +165,13 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Search */}
+              <button 
+                onClick={() => triggerAction('show_window')}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/[0.08] bg-white/[0.03] text-xs text-white/60 hover:bg-white/[0.06] transition-colors mr-2"
+              >
+                <Monitor className="w-3.5 h-3.5" />
+                <span>Show Pairing Window</span>
+              </button>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
                 <input
@@ -209,23 +266,23 @@ export default function App() {
                   className="flex flex-col items-center justify-center py-20 text-center"
                 >
                   <div className="w-16 h-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mb-4">
-                    <Search className="w-7 h-7 text-white/20" />
+                    <Smartphone className="w-7 h-7 text-white/20" />
                   </div>
-                  <p className="text-white/50 font-medium">No devices found</p>
-                  <p className="text-sm text-white/25 mt-1">Try adjusting your search or filter</p>
+                  <p className="text-white/50 font-medium">No devices connected</p>
+                  <p className="text-sm text-white/25 mt-1">Open the Josh S app on your phone to connect</p>
                 </motion.div>
               )}
             </div>
 
             {/* Activity feed (right column on large) */}
             <div className="hidden lg:block">
-              <ActivityFeed activities={recentActivity} />
+              <ActivityFeed activities={data.activities} />
             </div>
           </div>
 
           {/* Activity feed (full width on small) */}
           <div className="lg:hidden">
-            <ActivityFeed activities={recentActivity} />
+            <ActivityFeed activities={data.activities} />
           </div>
         </main>
 
