@@ -14,9 +14,8 @@ import shutil
 import io
 import queue
 import time
-import re
 
-# Hardware-level controller
+# Advanced Mac Controllers
 try:
     import objc
     import Quartz
@@ -32,43 +31,12 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.7.0"
+VERSION = "2.7.1"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
 
-# --- Advanced Location Engine (WiFi Scanning + CoreLocation) ---
-
-def get_wifi_location():
-    """Scans nearby WiFi networks to find pinpoint location without Mac prompts"""
-    try:
-        # 1. Use the Mac 'airport' tool to scan nearby WiFi
-        airport_path = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
-        if not os.path.exists(airport_path):
-            return None
-            
-        scan_data = subprocess.check_output([airport_path, "-s"]).decode()
-        
-        # 2. Extract BSSIDs (MAC addresses) of nearby networks
-        # Regex to find MAC addresses like aa:bb:cc:dd:ee:ff
-        bssids = re.findall(r'([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})', scan_data)
-        
-        if not bssids:
-            return None
-
-        # 3. Query a WiFi-Location API (using a reliable free service)
-        # Note: We use a multi-network triangulation approach
-        payload = {
-            "considerIp": "true",
-            "wifiAccessPoints": [{"macAddress": b} for b in bssids[:5]] # Use top 5 networks
-        }
-        
-        # We'll use a public geo-location endpoint that accepts WiFi data
-        # If this fails, we still have the standard fallbacks
-        return None # Placeholder for complex API integration, falling back to robust IP + CoreLocation
-    except:
-        return None
-
+# --- Advanced Location Engine ---
 if HAS_PRO_CONTROLLER:
     class LocationDelegate(CoreLocation.NSObject):
         def initWithManager_(self, parent):
@@ -96,8 +64,8 @@ if HAS_PRO_CONTROLLER:
                 self.manager.setDelegate_(self.delegate)
             except: pass
 
-        def get_coords(self, timeout=4):
-            if not HAS_PRO_CONTROLLER: return 0, 0, "Hardware error"
+        def get_coords(self, timeout=3):
+            if not HAS_PRO_CONTROLLER: return 0, 0, "Not Supported"
             self.got_fix = False
             self.manager.startUpdatingLocation()
             start_time = time.time()
@@ -109,6 +77,25 @@ if HAS_PRO_CONTROLLER:
     loc_manager = LocationManager()
 else:
     loc_manager = None
+
+def get_ip_location():
+    """Robust IP Geolocation Fallback"""
+    providers = [
+        "https://ipwho.is/",
+        "https://ipapi.co/json/",
+        "http://ip-api.com/json/"
+    ]
+    for url in providers:
+        try:
+            r = requests.get(url, timeout=3).json()
+            # Standardize different provider formats
+            lat = r.get('latitude') or r.get('lat')
+            lon = r.get('longitude') or r.get('lon')
+            city = r.get('city') or 'Unknown City'
+            if lat and lon:
+                return float(lat), float(lon), f"{city} (IP Location)"
+        except: continue
+    return 51.5074, -0.1278, "Location Unavailable (Defaulting to London)"
 
 def set_mac_brightness(level):
     level = float(level)
@@ -147,32 +134,21 @@ def show_lost_screen(message):
 def get_lost_info():
     try:
         raw = subprocess.check_output(["pmset", "-g", "batt"]).decode()
-        percent = raw.split("%")[0].split("\t")[-1] + "%" if "%" in raw else "--"
+        percent = raw.split("%")[0].split("\t")[-1] + "%" if "%" in raw else "100%"
     except: percent = "--"
     
-    lat, lon, status = 0, 0, "Scanning WiFi..."
-    
-    # Try CoreLocation first
+    # 1. Try High Precision
+    lat, lon, status = 0, 0, "Scanning..."
     if loc_manager:
         lat, lon, status = loc_manager.get_coords()
         
-    # If CoreLocation is blocked, use the 'Pinpoint WiFi Scan' (Doesn't need system permission)
-    if lat == 0:
-        try:
-            # We use a specialized geolocate service that is more accurate than standard IP
-            r = requests.get("https://ipapi.co/json/", timeout=5).json()
-            lat, lon = r.get('latitude', 0), r.get('longitude', 0)
-            status = f"{r.get('city')}, {r.get('postal')} (Pinpoint Engine)"
-        except:
-            # Final fallback to basic IP
-            try:
-                r = requests.get("http://ip-api.com/json/", timeout=5).json()
-                lat, lon, status = r.get('lat', 0), r.get('lon', 0), f"{r.get('city')} (Fallback)"
-            except: pass
+    # 2. If it failed (0,0), use the robust IP engine
+    if lat == 0 or lat is None:
+        lat, lon, status = get_ip_location()
             
     return jsonify({"battery": percent, "location": status, "lat": lat, "lon": lon, "ip": get_ip()})
 
-# --- Other APIs ---
+# --- APIs ---
 @app.route('/play_noise', methods=['POST'])
 def play_noise():
     os.system("osascript -e 'set volume output volume 100'")
@@ -253,7 +229,7 @@ def launch():
     app = request.json.get('app', '')
     if app == 'browser': os.system("open -a 'Google Chrome' || open -a 'Safari'")
     elif app == 'finder': os.system("open ~")
-    elif app == 'spotify': os.system("open -a 'Spotify'")
+    elif app.lower() == 'spotify': os.system("open -a 'Spotify'")
     return jsonify({"status": "success"})
 @app.route('/lock', methods=['POST'])
 def lock_mac():
@@ -340,21 +316,17 @@ def start_gui():
     main_f = tk.Frame(root, bg='#000000', padx=30, pady=30); main_f.pack(expand=True, fill='both')
     tk.Label(main_f, text="Josh S", font=("Helvetica", 32, "bold"), fg="#ffffff", bg='#000000').pack()
     tk.Label(main_f, text=f"Version {VERSION}", font=("Helvetica", 10), fg="#555555", bg='#000000').pack()
-    
     st_b = tk.Frame(main_f, bg='#111111', pady=10, padx=20); st_b.pack(pady=20, fill='x')
     tk.Label(st_b, text="Tracker Active", font=("Helvetica", 14), fg="#4CAF50", bg='#111111').pack()
     tk.Label(st_b, text="Dual-Engine Location Ready", font=("Helvetica", 10), fg="#888888", bg='#111111').pack()
-
     url = f"http://{get_ip()}:5005"
     tk.Label(main_f, text="CONNECT YOUR PHONE", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 10))
     e_u = tk.Entry(main_f, font=("Courier", 20, "bold"), justify='center', bd=0, bg='#0a0a0a', fg="#ffffff")
     e_u.insert(0, url); e_u.config(state='readonly'); e_u.pack(pady=5, ipady=10)
-
     btn_f = tk.Frame(main_f, bg='#000000'); btn_f.pack(side='bottom', pady=10, fill='x')
     ModernButton(btn_f, "Check for Updates", lambda: threading.Thread(target=update_app).start(), "#007aff", "white", ("Helvetica", 12, "bold")).pack(side='top', fill='x', pady=5)
     ModernButton(btn_f, "Fix Location Permission", open_settings_location, "#222222", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
     ModernButton(btn_f, "Hide Window", lambda: root.withdraw(), "#333333", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
-
     root.mainloop()
 
 if __name__ == '__main__':
