@@ -3,7 +3,8 @@ import {
   Volume2, Volume1, VolumeX, MousePointer, Send, Lock, 
   Delete, CornerDownLeft, Space, Play, SkipBack, SkipForward, 
   Sun, Moon, Monitor, Search, LayoutGrid, Globe, FolderOpen,
-  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Music
+  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Music,
+  Eye, RefreshCw, Power
 } from 'lucide-react';
 
 function App() {
@@ -18,6 +19,11 @@ function App() {
   const lastPos = useRef({ x: 0, y: 0 });
   const moveBuffer = useRef({ dx: 0, dy: 0 });
   const scrollBuffer = useRef(0);
+
+  const latestBrightness = useRef(0.5);
+  const latestVolume = useRef(50);
+  const brightnessTimer = useRef(null);
+  const volumeTimer = useRef(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -47,35 +53,26 @@ function App() {
     }
   };
 
-  const latestBrightness = useRef(0.5);
-  const latestVolume = useRef(50);
-  const brightnessTimer = useRef(null);
-  const volumeTimer = useRef(null);
-
   const handleBrightnessChange = (e) => {
     const val = parseFloat(e.target.value);
     setBrightness(val);
     latestBrightness.current = val;
-    
     if (brightnessTimer.current) return;
-    
     brightnessTimer.current = setTimeout(() => {
       sendCommand('brightness', { level: latestBrightness.current });
       brightnessTimer.current = null;
-    }, 50); // Faster response
+    }, 50);
   };
 
   const handleVolumeChange = (e) => {
     const val = parseInt(e.target.value);
     setVolume(val);
     latestVolume.current = val;
-    
     if (volumeTimer.current) return;
-    
     volumeTimer.current = setTimeout(() => {
       sendCommand('volume', { level: latestVolume.current });
       volumeTimer.current = null;
-    }, 50); // Faster response
+    }, 50);
   };
 
   const handleTouchMove = (e) => {
@@ -117,9 +114,14 @@ function App() {
       <header style={styles.header}>
         <div style={styles.headerTop}>
           <h1 style={styles.title}>Josh S</h1>
-          <button style={styles.lockButton} onClick={() => sendCommand('lock')}>
-            <Lock size={16} /> Lock
-          </button>
+          <div style={styles.headerBtns}>
+              <button style={styles.headerBtn} onClick={() => sendCommand('show_window')}>
+                <Eye size={16} /> Show Mac
+              </button>
+              <button style={{...styles.headerBtn, backgroundColor: '#ff3b30'}} onClick={() => sendCommand('lock')}>
+                <Lock size={16} /> Lock
+              </button>
+          </div>
         </div>
         <div style={styles.statusBadge}>
           <div style={{...styles.statusDot, backgroundColor: status === 'Connected' ? '#4CAF50' : '#f44336'}} />
@@ -269,6 +271,10 @@ function App() {
                 <X size={24} color="#ff3b30" />
                 <span>Quit App</span>
               </button>
+              <button style={{...styles.appBtn, border: '1px solid #007aff'}} onClick={() => sendCommand('update')}>
+                <RefreshCw size={24} color="#007aff" />
+                <span style={{color: '#007aff'}}>Update Mac</span>
+              </button>
             </div>
           </div>
         )}
@@ -319,13 +325,17 @@ const styles = {
     fontWeight: '700',
     margin: 0,
   },
-  lockButton: {
-    backgroundColor: '#ff3b30',
+  headerBtns: {
+    display: 'flex',
+    gap: '8px',
+  },
+  headerBtn: {
+    backgroundColor: '#222',
     color: '#fff',
     border: 'none',
     padding: '5px 12px',
     borderRadius: '20px',
-    fontSize: '12px',
+    fontSize: '11px',
     fontWeight: '600',
     display: 'flex',
     alignItems: 'center',

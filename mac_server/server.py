@@ -12,6 +12,7 @@ import requests
 import zipfile
 import shutil
 import io
+import queue
 
 # Hardware-level controller using Quartz and DisplayServices
 try:
@@ -28,14 +29,16 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.1.1"
+VERSION = "2.2.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
+
+# Queue for thread-safe GUI updates
+gui_queue = queue.Queue()
 
 def set_mac_brightness(level):
     """Ultimate hardware brightness control"""
     level = float(level)
     success = False
-    
     if HAS_PRO_CONTROLLER:
         try:
             main_id = Quartz.CGMainDisplayID()
@@ -51,7 +54,6 @@ def set_mac_brightness(level):
                         success = True
                     except: pass
         except: pass
-            
     os.system(f"osascript -e 'tell application \"System Events\" to set brightness of display 1 to {level}' 2>/dev/null")
     return success
 
@@ -167,6 +169,16 @@ def lock_mac():
     os.system("osascript -e 'tell application \"System Events\" to lock screen' &")
     return jsonify({"status": "success"})
 
+@app.route('/show_window', methods=['POST'])
+def show_window():
+    gui_queue.put('show')
+    return jsonify({"status": "success"})
+
+@app.route('/update', methods=['POST'])
+def trigger_update():
+    gui_queue.put('update')
+    return jsonify({"status": "success"})
+
 def get_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -213,8 +225,6 @@ class ModernButton(tk.Frame):
         self.label.pack(expand=True, fill='both')
         self.label.bind("<Button-1>", lambda e: self.command())
         self.bind("<Button-1>", lambda e: self.command())
-        
-        # Hover effect
         self.bind("<Enter>", lambda e: self.config(bg=self.lighten(bg_color)))
         self.label.bind("<Enter>", lambda e: self.config(bg=self.lighten(bg_color)))
         self.bind("<Leave>", lambda e: self.config(bg=bg_color))
@@ -231,37 +241,47 @@ def start_gui():
     root.geometry("450x550")
     root.configure(bg='#000000')
     root.resizable(False, False)
+    
+    # Start hidden
+    root.withdraw()
 
-    # Modern Fonts
+    def check_queue():
+        try:
+            msg = gui_queue.get_nowait()
+            if msg == 'show':
+                root.deiconify()
+                root.lift()
+                root.attributes("-topmost", True)
+                root.attributes("-topmost", False)
+            elif msg == 'update':
+                threading.Thread(target=update_app).start()
+        except queue.Empty:
+            pass
+        root.after(100, check_queue)
+
+    root.after(100, check_queue)
+
     title_font = tkfont.Font(family="Helvetica", size=32, weight="bold")
     subtitle_font = tkfont.Font(family="Helvetica", size=14)
     label_font = tkfont.Font(family="Helvetica", size=12)
     url_font = tkfont.Font(family="Courier", size=20, weight="bold")
 
-    # Main Container
     main_frame = tk.Frame(root, bg='#000000', padx=30, pady=30)
     main_frame.pack(expand=True, fill='both')
 
-    # Title
     tk.Label(main_frame, text="Josh S", font=title_font, fg="#ffffff", bg='#000000').pack(pady=(0, 5))
     tk.Label(main_frame, text=f"Version {VERSION}", font=("Helvetica", 10), fg="#555555", bg='#000000').pack()
 
-    # Status Badge
     status_frame = tk.Frame(main_frame, bg='#111111', pady=10, padx=20)
     status_frame.pack(pady=20, fill='x')
-    
     status_color = "#4CAF50" if HAS_PRO_CONTROLLER else "#f44336"
     status_msg = "Pro Engine Active" if HAS_PRO_CONTROLLER else "Standard Mode"
-    
     tk.Label(status_frame, text=status_msg, font=subtitle_font, fg=status_color, bg='#111111').pack()
     tk.Label(status_frame, text="Server is Online ✅", font=label_font, fg="#888888", bg='#111111').pack()
 
-    # URL Section
     ip_addr = get_ip()
     url = f"http://{ip_addr}:5005"
-    
     tk.Label(main_frame, text="CONNECT YOUR PHONE", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 10))
-    
     entry_url = tk.Entry(main_frame, font=url_font, justify='center', width=18, bd=0, highlightthickness=1, highlightbackground="#222222", bg='#0a0a0a', fg="#ffffff")
     entry_url.insert(0, url)
     entry_url.config(state='readonly', readonlybackground="#0a0a0a")
@@ -269,18 +289,19 @@ def start_gui():
 
     tk.Label(main_frame, text="Type this address into your Samsung's browser", font=("Helvetica", 10), fg="#666666", bg='#000000').pack(pady=5)
 
-    # Action Buttons
     btn_frame = tk.Frame(main_frame, bg='#000000')
     btn_frame.pack(side='bottom', pady=20, fill='x')
 
-    # Modern Custom Buttons (Fix for macOS button color issue)
-    update_btn = ModernButton(btn_frame, "Check for Updates", lambda: threading.Thread(target=update_app).start(), "#007aff", "white", ("Helvetica", 12, "bold"))
-    update_btn.pack(side='top', fill='x', pady=5)
+    ModernButton(btn_frame, "Check for Updates", lambda: threading.Thread(target=update_app).start(), "#007aff", "white", ("Helvetica", 12, "bold")).pack(side='top', fill='x', pady=5)
+    ModernButton(btn_frame, "Fix Permissions", open_settings, "#222222", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
+    ModernButton(btn_frame, "Hide Window", lambda: root.withdraw(), "#333333", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
 
-    perm_btn = ModernButton(btn_frame, "Fix Permissions", open_settings, "#222222", "#ffffff", ("Helvetica", 11))
-    perm_btn.pack(side='top', fill='x', pady=5)
+    def on_closing():
+        root.withdraw()
+        # To truly quit, user would need to quit from the system or we add a quit button
+        # But for now, closing the window just hides it.
+        # os._exit(0) 
 
-    def on_closing(): os._exit(0)
     root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
 
