@@ -16,11 +16,10 @@ import io
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
-# Optimization: Disable pyautogui fail-safe and pause for speed
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.4.1"
+VERSION = "1.5.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 @app.route('/')
@@ -85,35 +84,45 @@ def volume():
 def brightness():
     data = request.json
     action = data.get('action', 'up')
+    
+    # Method: Use AppleScript to tell System Events to change brightness via UI keys
+    # This often works when direct key codes fail
     if action == 'up':
-        # Method 1: System Key Code
-        os.system("osascript -e 'tell application \"System Events\" to key code 144' 2>/dev/null")
-        # Method 2: Standard PyAutoGUI key
+        script = 'tell application "System Events" to key code 144'
+    else:
+        script = 'tell application "System Events" to key code 145'
+    
+    os.system(f"osascript -e '{script}'")
+    
+    # Fallback for some Macs: Use shell brightness command if available
+    # Or simulate the Function key version
+    if action == 'up':
         pyautogui.press('brightnessup')
     else:
-        os.system("osascript -e 'tell application \"System Events\" to key code 145' 2>/dev/null")
         pyautogui.press('brightnessdown')
+        
     return jsonify({"status": "success"})
 
 @app.route('/media', methods=['POST'])
 def media():
     data = request.json
     action = data.get('action', 'play')
+    target = data.get('target', 'auto') # 'auto', 'spotify', 'chrome', 'music'
     
-    if action == 'play':
-        # Universal play/pause
-        pyautogui.press('playpause')
-        # Target specific apps just in case
-        os.system("osascript -e 'if application \"Spotify\" is running then tell application \"Spotify\" to playpause' 2>/dev/null")
-        os.system("osascript -e 'if application \"Music\" is running then tell application \"Music\" to playpause' 2>/dev/null")
-    elif action == 'next':
-        pyautogui.press('nexttrack')
-        os.system("osascript -e 'if application \"Spotify\" is running then tell application \"Spotify\" to next track' 2>/dev/null")
-        os.system("osascript -e 'if application \"Music\" is running then tell application \"Music\" to next track' 2>/dev/null")
-    elif action == 'prev':
-        pyautogui.press('prevtrack')
-        os.system("osascript -e 'if application \"Spotify\" is running then tell application \"Spotify\" to previous track' 2>/dev/null")
-        os.system("osascript -e 'if application \"Music\" is running then tell application \"Music\" to previous track' 2>/dev/null")
+    def run_as(app_name, cmd):
+        if app_name == "chrome":
+            # For Chrome/Safari, we simulate space bar or media keys in the app
+            os.system(f"osascript -e 'tell application \"Google Chrome\" to active tab of window 1 to execute javascript \"document.querySelector(\".ytp-play-button\")?.click()\"' 2>/dev/null")
+            pyautogui.press('playpause') # Fallback
+        elif app_name == "spotify":
+            os.system(f"osascript -e 'tell application \"Spotify\" to {cmd}'")
+        elif app_name == "music":
+            os.system(f"osascript -e 'tell application \"Music\" to {cmd}'")
+        else: # Auto
+            pyautogui.press({'play':'playpause', 'next':'nexttrack', 'prev':'prevtrack'}[action])
+
+    cmd_map = {'play': 'playpause', 'next': 'next track', 'prev': 'previous track'}
+    run_as(target, cmd_map[action])
         
     return jsonify({"status": "success"})
 
@@ -122,10 +131,11 @@ def launch():
     data = request.json
     app_name = data.get('app', '')
     if app_name == 'browser': 
-        # Tries to open Chrome, falls back to Safari
         os.system("open -a 'Google Chrome' || open -a 'Safari'")
     elif app_name == 'finder': 
         os.system("open ~")
+    elif app_name == 'spotify':
+        os.system("open -a 'Spotify'")
     return jsonify({"status": "success"})
 
 @app.route('/lock', methods=['POST'])
@@ -187,7 +197,7 @@ def start_gui():
     tk.Label(root, text="Josh S", font=("Arial", 28, "bold"), fg="#ffffff", bg='#121212').pack(pady=15)
     tk.Label(root, text="Server Status: ONLINE", font=("Arial", 12, "bold"), fg="#4CAF50", bg='#121212').pack()
     tk.Label(root, text=f"Local URL: {url}", font=("Arial", 10), fg="#888", bg='#121212').pack(pady=5)
-    tk.Label(root, text="Open this address on your phone:", font=("Arial", 11), fg="#aaaaaa", bg='#121212').pack(pady=10)
+    tk.Label(root, text="Open address on your phone:", font=("Arial", 11), fg="#aaaaaa", bg='#121212').pack(pady=10)
 
     entry_url = tk.Entry(root, font=("Arial", 18), justify='center', width=18, bd=0)
     entry_url.insert(0, url)

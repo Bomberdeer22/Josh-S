@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Volume2, Volume1, VolumeX, MousePointer, Keyboard, Send, Lock, 
+  Volume2, Volume1, VolumeX, MousePointer, Send, Lock, 
   Delete, CornerDownLeft, Space, Play, SkipBack, SkipForward, 
   Sun, Moon, Monitor, Search, LayoutGrid, Globe, FolderOpen,
-  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X
+  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Music
 } from 'lucide-react';
 
 function App() {
@@ -11,8 +11,9 @@ function App() {
   const [status, setStatus] = useState('Connecting...');
   const [text, setText] = useState('');
   const [activeTab, setActiveTab] = useState('mouse');
-  const lastPos = useRef({ x: 0, y: 0 });
+  const [mediaTarget, setMediaTarget] = useState('auto');
   
+  const lastPos = useRef({ x: 0, y: 0 });
   const moveBuffer = useRef({ dx: 0, dy: 0 });
   const scrollBuffer = useRef(0);
 
@@ -148,21 +149,32 @@ function App() {
 
         {activeTab === 'media' && (
           <div style={styles.tabContent}>
+            
             <div style={styles.controlSection}>
-              <p style={styles.sectionTitle}>Volume</p>
-              <div style={styles.volumeGroup}>
-                <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'down' })}><Volume1 /></button>
-                <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'mute' })}><VolumeX /></button>
-                <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'up' })}><Volume2 /></button>
+              <p style={styles.sectionTitle}>Control Target</p>
+              <div style={styles.targetRow}>
+                 <button style={{...styles.targetBtn, backgroundColor: mediaTarget === 'auto' ? '#007aff' : '#222'}} onClick={() => setMediaTarget('auto')}>Auto</button>
+                 <button style={{...styles.targetBtn, backgroundColor: mediaTarget === 'spotify' ? '#1DB954' : '#222'}} onClick={() => setMediaTarget('spotify')}>Spotify</button>
+                 <button style={{...styles.targetBtn, backgroundColor: mediaTarget === 'chrome' ? '#4285F4' : '#222'}} onClick={() => setMediaTarget('chrome')}>Browser</button>
+                 <button style={{...styles.targetBtn, backgroundColor: mediaTarget === 'music' ? '#FC3C44' : '#222'}} onClick={() => setMediaTarget('music')}>Music</button>
               </div>
             </div>
 
             <div style={styles.controlSection}>
               <p style={styles.sectionTitle}>Playback</p>
               <div style={styles.mediaGroup}>
-                <button style={styles.mediaBtn} onClick={() => sendCommand('media', { action: 'prev' })}><SkipBack /></button>
-                <button style={styles.mediaBtnPrimary} onClick={() => sendCommand('media', { action: 'play' })}><Play fill="white" /></button>
-                <button style={styles.mediaBtn} onClick={() => sendCommand('media', { action: 'next' })}><SkipForward /></button>
+                <button style={styles.mediaBtn} onClick={() => sendCommand('media', { action: 'prev', target: mediaTarget })}><SkipBack /></button>
+                <button style={styles.mediaBtnPrimary} onClick={() => sendCommand('media', { action: 'play', target: mediaTarget })}><Play fill="white" /></button>
+                <button style={styles.mediaBtn} onClick={() => sendCommand('media', { action: 'next', target: mediaTarget })}><SkipForward /></button>
+              </div>
+            </div>
+
+            <div style={styles.controlSection}>
+              <p style={styles.sectionTitle}>Volume</p>
+              <div style={styles.volumeGroup}>
+                <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'down' })}><Volume1 /></button>
+                <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'mute' })}><VolumeX /></button>
+                <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'up' })}><Volume2 /></button>
               </div>
             </div>
 
@@ -181,7 +193,11 @@ function App() {
             <div style={styles.appGrid}>
               <button style={styles.appBtn} onClick={() => sendCommand('launch', { app: 'browser' })}>
                 <Globe size={24} />
-                <span>Safari</span>
+                <span>Safari/Chrome</span>
+              </button>
+              <button style={styles.appBtn} onClick={() => sendCommand('launch', { app: 'spotify' })}>
+                <Music size={24} color="#1DB954" />
+                <span>Spotify</span>
               </button>
               <button style={styles.appBtn} onClick={() => sendCommand('launch', { app: 'finder' })}>
                 <FolderOpen size={24} />
@@ -334,6 +350,19 @@ const styles = {
     color: '#333',
     fontSize: '18px',
   },
+  targetRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: '5px',
+  },
+  targetBtn: {
+    padding: '8px 2px',
+    border: 'none',
+    borderRadius: '6px',
+    color: 'white',
+    fontSize: '10px',
+    fontWeight: 'bold',
+  },
   clickGrid: {
     display: 'flex',
     gap: '10px',
@@ -357,14 +386,14 @@ const styles = {
   },
   controlSection: {
     backgroundColor: '#111',
-    padding: '15px',
+    padding: '12px',
     borderRadius: '16px',
     border: '1px solid #222',
   },
   sectionTitle: {
-    fontSize: '12px',
-    color: '#666',
-    marginBottom: '10px',
+    fontSize: '11px',
+    color: '#555',
+    marginBottom: '8px',
     textTransform: 'uppercase',
     letterSpacing: '1px',
   },
