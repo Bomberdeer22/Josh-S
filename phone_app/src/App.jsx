@@ -12,6 +12,7 @@ function App() {
   const [text, setText] = useState('');
   const [activeTab, setActiveTab] = useState('mouse');
   const [mediaTarget, setMediaTarget] = useState('auto');
+  const [brightness, setBrightness] = useState(0.5);
   
   const lastPos = useRef({ x: 0, y: 0 });
   const moveBuffer = useRef({ dx: 0, dy: 0 });
@@ -43,6 +44,12 @@ function App() {
     } catch (e) {
       setStatus('Offline');
     }
+  };
+
+  const handleBrightnessChange = (e) => {
+    const val = parseFloat(e.target.value);
+    setBrightness(val);
+    sendCommand('brightness', { level: val });
   };
 
   const handleTouchMove = (e) => {
@@ -180,9 +187,18 @@ function App() {
 
             <div style={styles.controlSection}>
               <p style={styles.sectionTitle}>Brightness</p>
-              <div style={styles.brightnessGroup}>
-                <button style={styles.iconBtn} onClick={() => sendCommand('brightness', { action: 'down' })}><Moon /></button>
-                <button style={styles.iconBtn} onClick={() => sendCommand('brightness', { action: 'up' })}><Sun /></button>
+              <div style={styles.sliderRow}>
+                <Moon size={16} color="#555" />
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="1" 
+                  step="0.05" 
+                  value={brightness} 
+                  onChange={handleBrightnessChange} 
+                  style={styles.slider}
+                />
+                <Sun size={16} color="#555" />
               </div>
             </div>
           </div>
@@ -424,12 +440,15 @@ const styles = {
     padding: '18px',
     borderRadius: '50%',
   },
-  brightnessGroup: {
+  sliderRow: {
     display: 'flex',
-    justifyContent: 'space-around',
-    backgroundColor: '#1a1a1a',
-    borderRadius: '12px',
-    padding: '4px',
+    alignItems: 'center',
+    gap: '10px',
+    padding: '10px 0',
+  },
+  slider: {
+    flex: 1,
+    accentColor: '#007aff',
   },
   appGrid: {
     display: 'grid',

@@ -12,11 +12,6 @@ import requests
 import zipfile
 import shutil
 import io
-import logging
-
-# Suppress Flask logs for a cleaner terminal
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -24,7 +19,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.5.2"
+VERSION = "1.6.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 @app.route('/')
@@ -88,21 +83,22 @@ def volume():
 @app.route('/brightness', methods=['POST'])
 def brightness():
     data = request.json
-    action = data.get('action', 'up')
+    level = data.get('level') # 0.0 to 1.0
     
-    # Try using the 'brightness' command line tool if installed via brew
-    # Otherwise fallback to a set of different AppleScript methods
-    if action == 'up':
-        os.system("osascript -e 'tell application \"System Events\" to key code 144' 2>/dev/null")
-        os.system("osascript -e 'tell application \"System Events\" to key code 113' 2>/dev/null")
-        os.system("osascript -e 'tell application \"System Events\" to repeat 1 times \n key code 144 \n end repeat' 2>/dev/null")
-        # Direct IOKit approach via shell
-        os.system("brightness +0.1 2>/dev/null")
+    if level is not None:
+        os.system(f"osascript -e 'tell application \"System Events\" to set brightness of display 1 to {level}'")
     else:
-        os.system("osascript -e 'tell application \"System Events\" to key code 145' 2>/dev/null")
-        os.system("osascript -e 'tell application \"System Events\" to key code 107' 2>/dev/null")
-        os.system("brightness -0.1 2>/dev/null")
-        
+        action = data.get('action', 'up')
+        # Get current brightness and increment
+        try:
+            curr = subprocess.check_output(["osascript", "-e", "tell application \"System Events\" to get brightness of display 1"]).decode().strip()
+            new_val = float(curr) + 0.1 if action == 'up' else float(curr) - 0.1
+            new_val = max(0, min(1.0, new_val))
+            os.system(f"osascript -e 'tell application \"System Events\" to set brightness of display 1 to {new_val}'")
+        except:
+            # Fallback to keys if the property method fails
+            pyautogui.press('brightnessup' if action == 'up' else 'brightnessdown')
+            
     return jsonify({"status": "success"})
 
 @app.route('/media', methods=['POST'])
@@ -112,22 +108,19 @@ def media():
     target = data.get('target', 'auto')
     
     if target == "chrome":
-        # Targeted AppleScript for Chrome - No window switching
+        # Targeted AppleScript for Chrome using JS for zero-swipe control
         if action == 'play':
-            os.system("osascript -e 'tell application \"Google Chrome\" to execute active tab of window 1 javascript \"document.querySelector(\"\"video, audio\"\").paused ? document.querySelector(\"\"video, audio\"\").play() : document.querySelector(\"\"video, audio\"\").pause()\"' 2>/dev/null")
-            # Fallback for YT specific
-            os.system("osascript -e 'tell application \"Google Chrome\" to execute active tab of window 1 javascript \"document.querySelector(\"\".ytp-play-button\"\")?.click()\"' 2>/dev/null")
+            os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"document.querySelector(\\\"video, audio\\\").paused ? document.querySelector(\\\"video, audio\\\").play() : document.querySelector(\\\"video, audio\\\").pause()\"' 2>/dev/null")
         elif action == 'next':
-            os.system("osascript -e 'tell application \"Google Chrome\" to execute active tab of window 1 javascript \"document.querySelector(\"\".ytp-next-button\"\")?.click()\"' 2>/dev/null")
+            os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"document.querySelector(\\\".ytp-next-button\\\")?.click()\"' 2>/dev/null")
         elif action == 'prev':
-            os.system("osascript -e 'tell application \"Google Chrome\" to execute active tab of window 1 javascript \"history.back()\"' 2>/dev/null")
+            os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"window.history.back()\"' 2>/dev/null")
             
     elif target == "spotify":
         os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
     elif target == "music":
         os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
     else:
-        # Default Auto mode - Minimal impact
         cmd_key = {'play': 'playpause', 'next': 'nexttrack', 'prev': 'prevtrack'}[action]
         pyautogui.press(cmd_key)
         
@@ -163,7 +156,7 @@ def get_ip():
     return IP
 
 def run_server():
-    app.run(host='0.0.0.0', port=5005, threaded=True)
+    app.run(host='0.0.0.0', port=5005)
 
 def update_app():
     try:
