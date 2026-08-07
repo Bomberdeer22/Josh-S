@@ -15,9 +15,8 @@ import io
 import queue
 import time
 from datetime import datetime
-import json
 
-# Try to load Pro Display Services for hardware-level control
+# Advanced Mac Controllers
 try:
     import objc
     import Quartz
@@ -27,20 +26,13 @@ try:
 except ImportError:
     HAS_PRO_CONTROLLER = False
 
-# Try to load pywebview for a real desktop app experience
-try:
-    import webview
-    HAS_WEBVIEW = True
-except ImportError:
-    HAS_WEBVIEW = False
-
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "3.0.0"
+VERSION = "3.0.1"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
@@ -106,10 +98,10 @@ def get_ip_location():
             r = requests.get(url, timeout=3).json()
             lat = r.get('latitude') or r.get('lat')
             lon = r.get('longitude') or r.get('lon')
-            city = r.get('city') or 'Unknown'
+            city = r.get('city') or 'Unknown City'
             if lat and lon: return float(lat), float(lon), f"{city} (IP)"
         except: continue
-    return 51.5074, -0.1278, "Unknown"
+    return 51.5074, -0.1278, "Location Unavailable"
 
 def set_mac_brightness(level):
     level = float(level)
@@ -137,7 +129,6 @@ def admin_dashboard():
 
 @app.route('/api/admin_info')
 def admin_info():
-    # Host Info
     battery_raw = ""
     try: battery_raw = subprocess.check_output(["pmset", "-g", "batt"]).decode()
     except: pass
@@ -145,40 +136,11 @@ def admin_info():
     if "%" in battery_raw:
         try: batt_val = int(battery_raw.split("%")[0].split("\t")[-1])
         except: pass
-    
-    host = {
-        "id": "host-mac",
-        "name": "My MacBook",
-        "type": "macbook",
-        "model": "MacBook Pro",
-        "os": "macOS",
-        "battery": batt_val,
-        "storage": {"used": 450, "total": 1000},
-        "status": "connected",
-        "lastSeen": "Now",
-        "ip": get_ip()
-    }
-    
+    host = {"id": "host", "name": "My MacBook", "type": "macbook", "model": "MacBook Pro", "os": "macOS", "battery": batt_val, "storage": {"used": 450, "total": 1000}, "status": "connected", "lastSeen": "Now", "ip": get_ip()}
     devices = []
     for ip, info in active_connections.items():
-        devices.append({
-            "id": ip,
-            "name": info['name'],
-            "type": "android" if "Samsung" in info['name'] else "iphone",
-            "model": "Mobile Remote",
-            "os": "Remote OS",
-            "battery": 85,
-            "storage": {"used": 0, "total": 0},
-            "status": "connected",
-            "lastSeen": "Now",
-            "ip": ip
-        })
-        
-    return jsonify({
-        "host": host,
-        "devices": devices,
-        "activities": activities
-    })
+        devices.append({"id": ip, "name": info['name'], "type": "android" if "Samsung" in info['name'] else "iphone", "model": "Remote Device", "os": "Remote OS", "battery": 85, "storage": {"used": 0, "total": 0}, "status": "connected", "lastSeen": "Now", "ip": ip})
+    return jsonify({"host": host, "devices": devices, "activities": activities})
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -187,9 +149,10 @@ def register():
     name = "Samsung Device" if "Android" in ua else "Mobile Device"
     active_connections[ip] = {"name": name, "connected_at": datetime.now().strftime("%H:%M:%S")}
     add_activity(name, "Connected to Mac", "connect")
+    gui_queue.put('refresh_view')
     return jsonify({"status": "registered"})
 
-# Control APIs
+# Controls
 @app.route('/move', methods=['POST'])
 def move_mouse():
     pyautogui.moveRel(request.json.get('dx', 0), request.json.get('dy', 0))
@@ -301,7 +264,8 @@ def get_ip():
     return IP
 
 def run_server():
-    app.run(host='0.0.0.0', port=5005, threaded=True)
+    try: app.run(host='0.0.0.0', port=5005, threaded=True)
+    except Exception as e: gui_queue.put(f'error:{str(e)}')
 
 def update_app():
     try:
@@ -324,6 +288,15 @@ def update_app():
     except Exception as e: gui_queue.put(f'error:Update failed: {str(e)}')
 
 # --- GUI ---
+class ModernButton(tk.Frame):
+    def __init__(self, parent, text, command, bg_color, fg_color, font):
+        super().__init__(parent, bg=bg_color, padx=10, pady=5)
+        self.command = command
+        self.label = tk.Label(self, text=text, fg=fg_color, bg=bg_color, font=font)
+        self.label.pack(expand=True, fill='both')
+        self.label.bind("<Button-1>", lambda e: self.command())
+        self.bind("<Button-1>", lambda e: self.command())
+
 lost_window = None
 def show_lost_screen(message):
     global lost_window
@@ -339,32 +312,67 @@ def show_lost_screen(message):
 
 def open_settings(): os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices'")
 
-class ModernButton(tk.Frame):
-    def __init__(self, parent, text, command, bg_color, fg_color, font):
-        super().__init__(parent, bg=bg_color, padx=10, pady=5)
-        self.command = command
-        self.label = tk.Label(self, text=text, fg=fg_color, bg=bg_color, font=font)
-        self.label.pack(expand=True, fill='both')
-        self.label.bind("<Button-1>", lambda e: self.command())
-        self.bind("<Button-1>", lambda e: self.command())
-
 def start_gui():
     root = tk.Tk()
     root.title(f"Josh S Setup")
-    root.geometry("450x550")
+    root.geometry("450x650")
     root.configure(bg='#000000')
     root.resizable(False, False)
-    
-    def auto_hide(): time.sleep(5); gui_queue.put('hide')
-    
+
+    main_container = tk.Frame(root, bg="#000000", padx=30, pady=30)
+    main_container.pack(expand=True, fill='both')
+
+    current_view = "connect"
+
+    def render_view():
+        for widget in main_container.winfo_children(): widget.destroy()
+        
+        if current_view == "connect":
+            tk.Label(main_container, text="Josh S", font=("Helvetica", 36, "bold"), fg="#ffffff", bg='#000000').pack()
+            st_b = tk.Frame(main_container, bg='#111111', pady=15, padx=20); st_b.pack(pady=30, fill='x')
+            tk.Label(st_b, text="Pairing Window", font=("Helvetica", 14), fg="#007aff", bg='#111111').pack()
+            url = f"http://{get_ip()}:5005"
+            tk.Label(main_container, text="URL FOR PHONE", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 5))
+            e_u = tk.Entry(main_container, font=("Courier", 22, "bold"), justify='center', bd=0, bg='#0a0a0a', fg="#ffffff")
+            e_u.insert(0, url); e_u.config(state='readonly'); e_u.pack(pady=10, ipady=15, fill='x')
+            ModernButton(main_container, "View Dashboard", lambda: set_view("manage"), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=20, fill='x')
+        else:
+            tk.Label(main_container, text="Connections", font=("Helvetica", 28, "bold"), fg="#ffffff", bg='#000000').pack(pady=(0, 20))
+            if not active_connections:
+                tk.Label(main_container, text="No devices connected", font=("Helvetica", 14), fg="#444", bg="#000000").pack(pady=50)
+            for ip, info in active_connections.items():
+                card = tk.Frame(main_container, bg="#111111", pady=15, padx=15); card.pack(fill='x', pady=5)
+                tk.Label(card, text=info['name'], font=("Helvetica", 16, "bold"), fg="#ffffff", bg="#111111").pack(anchor='w')
+                tk.Label(card, text=f"IP: {ip}  •  Joined: {info['connected_at']}", font=("Helvetica", 10), fg="#888888", bg="#111111").pack(anchor='w')
+            ModernButton(main_container, "Open Admin Web Dashboard", lambda: os.system("open http://localhost:5005/admin"), "#007aff", "white", ("Helvetica", 12, "bold")).pack(pady=20, fill='x')
+            ModernButton(main_container, "Back to Pairing", lambda: set_view("connect"), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=5, fill='x')
+
+        footer = tk.Frame(main_container, bg='#000000'); footer.pack(side='bottom', fill='x')
+        ModernButton(footer, "Update", lambda: threading.Thread(target=update_app).start(), "#1a1a1a", "#888888", ("Helvetica", 10)).pack(side='left', expand=True, padx=2)
+        ModernButton(footer, "Hide", lambda: root.withdraw(), "#1a1a1a", "#888888", ("Helvetica", 10)).pack(side='left', expand=True, padx=2)
+
+    def set_view(v):
+        nonlocal current_view
+        current_view = v
+        render_view()
+
+    render_view()
+
     def check_queue():
         global lost_window
         try:
             msg = gui_queue.get_nowait()
             if msg == 'toggle':
-                if root.state() == 'normal' and root.winfo_viewable(): root.withdraw()
-                else: root.deiconify(); root.lift()
+                # FIX: Check if the window is truly visible and mapped
+                if root.winfo_viewable():
+                    root.withdraw()
+                else:
+                    root.deiconify()
+                    root.lift()
+                    root.attributes("-topmost", True)
+                    root.attributes("-topmost", False)
             elif msg == 'hide': root.withdraw()
+            elif msg == 'refresh_view': render_view()
             elif msg == 'update': threading.Thread(target=update_app).start()
             elif msg == 'close_lost':
                 if lost_window: lost_window.destroy(); lost_window = None
@@ -374,25 +382,7 @@ def start_gui():
         root.after(100, check_queue)
 
     root.after(100, check_queue)
-    threading.Thread(target=auto_hide, daemon=True).start()
-
-    main_f = tk.Frame(root, bg='#000000', padx=30, pady=30); main_f.pack(expand=True, fill='both')
-    tk.Label(main_f, text="Josh S", font=("Helvetica", 36, "bold"), fg="#ffffff", bg='#000000').pack()
-    
-    st_b = tk.Frame(main_f, bg='#111111', pady=15, padx=20); st_b.pack(pady=30, fill='x')
-    tk.Label(st_b, text="Pairing Window", font=("Helvetica", 14), fg="#007aff", bg='#111111').pack()
-    
-    url = f"http://{get_ip()}:5005"
-    tk.Label(main_f, text="URL FOR PHONE", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 5))
-    e_u = tk.Entry(main_f, font=("Courier", 22, "bold"), justify='center', bd=0, bg='#0a0a0a', fg="#ffffff")
-    e_u.insert(0, url); e_u.config(state='readonly'); e_u.pack(pady=10, ipady=15, fill='x')
-
-    def open_dashboard(): os.system("open http://localhost:5005/admin")
-
-    ModernButton(main_f, "Open Management Dashboard", open_dashboard, "#007aff", "white", ("Helvetica", 12, "bold")).pack(pady=20, fill='x')
-    ModernButton(main_f, "Check for Updates", lambda: threading.Thread(target=update_app).start(), "#1a1a1a", "#888888", ("Helvetica", 11)).pack(pady=5, fill='x')
-    ModernButton(main_f, "Hide Window", lambda: root.withdraw(), "#1a1a1a", "#888888", ("Helvetica", 11)).pack(pady=5, fill='x')
-
+    threading.Thread(target=lambda: (time.sleep(3), gui_queue.put('hide')), daemon=True).start()
     root.mainloop()
 
 if __name__ == '__main__':
