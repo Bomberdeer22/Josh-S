@@ -1,0 +1,6 @@
+{
+  "appId": "com.josh.remote",
+  "appName": "Josh S",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
