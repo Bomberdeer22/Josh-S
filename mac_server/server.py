@@ -31,7 +31,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.7.1"
+VERSION = "2.7.2"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
@@ -88,7 +88,6 @@ def get_ip_location():
     for url in providers:
         try:
             r = requests.get(url, timeout=3).json()
-            # Standardize different provider formats
             lat = r.get('latitude') or r.get('lat')
             lon = r.get('longitude') or r.get('lon')
             city = r.get('city') or 'Unknown City'
@@ -136,16 +135,9 @@ def get_lost_info():
         raw = subprocess.check_output(["pmset", "-g", "batt"]).decode()
         percent = raw.split("%")[0].split("\t")[-1] + "%" if "%" in raw else "100%"
     except: percent = "--"
-    
-    # 1. Try High Precision
     lat, lon, status = 0, 0, "Scanning..."
-    if loc_manager:
-        lat, lon, status = loc_manager.get_coords()
-        
-    # 2. If it failed (0,0), use the robust IP engine
-    if lat == 0 or lat is None:
-        lat, lon, status = get_ip_location()
-            
+    if loc_manager: lat, lon, status = loc_manager.get_coords()
+    if lat == 0 or lat is None: lat, lon, status = get_ip_location()
     return jsonify({"battery": percent, "location": status, "lat": lat, "lon": lon, "ip": get_ip()})
 
 # --- APIs ---
@@ -226,10 +218,10 @@ def media():
     return jsonify({"status": "success"})
 @app.route('/launch', methods=['POST'])
 def launch():
-    app = request.json.get('app', '')
-    if app == 'browser': os.system("open -a 'Google Chrome' || open -a 'Safari'")
-    elif app == 'finder': os.system("open ~")
-    elif app.lower() == 'spotify': os.system("open -a 'Spotify'")
+    app_name = request.json.get('app', '')
+    if app_name == 'browser': os.system("open -a 'Google Chrome' || open -a 'Safari'")
+    elif app_name == 'finder': os.system("open ~")
+    elif app_name.lower() == 'spotify': os.system("open -a 'Spotify'")
     return jsonify({"status": "success"})
 @app.route('/lock', methods=['POST'])
 def lock_mac():
@@ -241,7 +233,7 @@ def empty_trash():
     return jsonify({"status": "success"})
 @app.route('/show_window', methods=['POST'])
 def show_window():
-    gui_queue.put('show')
+    gui_queue.put('toggle')
     return jsonify({"status": "success"})
 @app.route('/update', methods=['POST'])
 def trigger_update():
@@ -301,7 +293,10 @@ def start_gui():
         global lost_window
         try:
             msg = gui_queue.get_nowait()
-            if msg == 'show': root.deiconify(); root.lift()
+            if msg == 'toggle':
+                if root.state() == 'normal': root.withdraw()
+                else: root.deiconify(); root.lift()
+            elif msg == 'show': root.deiconify(); root.lift()
             elif msg == 'hide': root.withdraw()
             elif msg == 'update': threading.Thread(target=update_app).start()
             elif msg == 'close_lost':
