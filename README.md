@@ -25,12 +25,12 @@ This project allows you to remotely control your MacBook from your Samsung phone
     ```bash
     python3 server.py
     ```
-5.  The terminal will display your Mac's IP address (e.g., `http://192.168.1.5:5000`).
+5.  The terminal will display your Mac's IP address (e.g., `http://192.168.1.5:5005`).
 
 ### 2. On your Samsung Phone:
 1.  Ensure your phone is on the **same WiFi network** as your Mac.
 2.  Open Chrome or your preferred browser.
-3.  Enter the URL shown on your Mac (e.g., `http://192.168.1.5:5000`).
+3.  Enter the URL shown on your Mac (e.g., `http://192.168.1.5:5005`).
 4.  To make it a real "app":
     -   Tap the three dots (menu) in Chrome.
     -   Select **"Add to Home screen"**.
