@@ -19,7 +19,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 @app.route('/')
@@ -85,20 +85,14 @@ def brightness():
     data = request.json
     action = data.get('action', 'up')
     
-    # Method: Use AppleScript to tell System Events to change brightness via UI keys
-    # This often works when direct key codes fail
+    # Send multiple codes for different Mac generations
     if action == 'up':
-        script = 'tell application "System Events" to key code 144'
-    else:
-        script = 'tell application "System Events" to key code 145'
-    
-    os.system(f"osascript -e '{script}'")
-    
-    # Fallback for some Macs: Use shell brightness command if available
-    # Or simulate the Function key version
-    if action == 'up':
+        os.system("osascript -e 'tell application \"System Events\" to key code 144' 2>/dev/null") # Standard
+        os.system("osascript -e 'tell application \"System Events\" to key code 113' 2>/dev/null") # F15
         pyautogui.press('brightnessup')
     else:
+        os.system("osascript -e 'tell application \"System Events\" to key code 145' 2>/dev/null") # Standard
+        os.system("osascript -e 'tell application \"System Events\" to key code 107' 2>/dev/null") # F14
         pyautogui.press('brightnessdown')
         
     return jsonify({"status": "success"})
@@ -107,22 +101,27 @@ def brightness():
 def media():
     data = request.json
     action = data.get('action', 'play')
-    target = data.get('target', 'auto') # 'auto', 'spotify', 'chrome', 'music'
+    target = data.get('target', 'auto')
     
-    def run_as(app_name, cmd):
-        if app_name == "chrome":
-            # For Chrome/Safari, we simulate space bar or media keys in the app
-            os.system(f"osascript -e 'tell application \"Google Chrome\" to active tab of window 1 to execute javascript \"document.querySelector(\".ytp-play-button\")?.click()\"' 2>/dev/null")
-            pyautogui.press('playpause') # Fallback
-        elif app_name == "spotify":
-            os.system(f"osascript -e 'tell application \"Spotify\" to {cmd}'")
-        elif app_name == "music":
-            os.system(f"osascript -e 'tell application \"Music\" to {cmd}'")
-        else: # Auto
-            pyautogui.press({'play':'playpause', 'next':'nexttrack', 'prev':'prevtrack'}[action])
-
-    cmd_map = {'play': 'playpause', 'next': 'next track', 'prev': 'previous track'}
-    run_as(target, cmd_map[action])
+    if target == "chrome" or target == "browser":
+        # Strategy: Focus Browser and send "K" (YouTube's play/pause) or Space
+        os.system("osascript -e 'tell application \"Google Chrome\" to activate' 2>/dev/null")
+        os.system("osascript -e 'tell application \"Safari\" to activate' 2>/dev/null")
+        if action == 'play': 
+            pyautogui.press('space')
+        elif action == 'next': 
+            pyautogui.hotkey('shift', 'n') # YouTube next
+        elif action == 'prev': 
+            pyautogui.hotkey('shift', 'p') # YouTube prev
+            
+    elif target == "spotify":
+        os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
+    elif target == "music":
+        os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
+    else:
+        # Default Auto mode
+        cmd_key = {'play': 'playpause', 'next': 'nexttrack', 'prev': 'prevtrack'}[action]
+        pyautogui.press(cmd_key)
         
     return jsonify({"status": "success"})
 
