@@ -13,6 +13,7 @@ import zipfile
 import shutil
 import io
 import queue
+import time
 
 # Hardware-level controller using Quartz and DisplayServices
 try:
@@ -29,14 +30,12 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.2.0"
+VERSION = "2.2.1"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
-# Queue for thread-safe GUI updates
 gui_queue = queue.Queue()
 
 def set_mac_brightness(level):
-    """Ultimate hardware brightness control"""
     level = float(level)
     success = False
     if HAS_PRO_CONTROLLER:
@@ -47,8 +46,7 @@ def set_mac_brightness(level):
                 ds_bundle = NSBundle.bundleWithPath_(bundle_path)
                 functions = [('DisplayServicesSetBrightness', b'vIf')]
                 objc.loadBundleFunctions(ds_bundle, globals(), functions)
-                ids_to_try = {main_id, 0, 1, 2, 3}
-                for d_id in ids_to_try:
+                for d_id in {main_id, 0, 1, 2, 3}:
                     try:
                         DisplayServicesSetBrightness(d_id, level)
                         success = True
@@ -111,20 +109,16 @@ def volume():
         os.system(f"osascript -e 'set volume output volume {level}'")
     else:
         action = data.get('action', 'up')
-        if action == 'up':
-            os.system("osascript -e 'set volume output volume (output volume of (get volume settings) + 7)'")
-        elif action == 'down':
-            os.system("osascript -e 'set volume output volume (output volume of (get volume settings) - 7)'")
-        elif action == 'mute':
-            os.system("osascript -e 'set volume output muted not (output muted of (get volume settings))'")
+        if action == 'up': os.system("osascript -e 'set volume output volume (output volume of (get volume settings) + 7)'")
+        elif action == 'down': os.system("osascript -e 'set volume output volume (output volume of (get volume settings) - 7)'")
+        elif action == 'mute': os.system("osascript -e 'set volume output muted not (output muted of (get volume settings))'")
     return jsonify({"status": "success"})
 
 @app.route('/brightness', methods=['POST'])
 def brightness():
     data = request.json
     level = data.get('level')
-    if level is not None:
-        set_mac_brightness(float(level))
+    if level is not None: set_mac_brightness(float(level))
     else:
         action = data.get('action', 'up')
         pyautogui.press('brightnessup' if action == 'up' else 'brightnessdown')
@@ -135,20 +129,15 @@ def media():
     data = request.json
     action = data.get('action', 'play')
     target = data.get('target', 'auto')
-    
     if target == "chrome" or target == "browser":
         if action == 'play':
             script = 'tell application "Google Chrome" to tell active tab of window 1 to execute javascript "var v=document.querySelector(\'video, audio\'); if(v) { v.paused ? v.play() : v.pause(); \'success\' } else { \'fail\' }"'
             result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
             if "success" not in result.stdout: pyautogui.press('space')
-        elif action == 'next':
-            os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"document.querySelector(\\\".ytp-next-button\\\")?.click()\"' 2>/dev/null")
-        elif action == 'prev':
-            os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"window.history.back()\"' 2>/dev/null")
-    elif target == "spotify":
-        os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
-    elif target == "music":
-        os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
+        elif action == 'next': os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"document.querySelector(\\\".ytp-next-button\\\")?.click()\"' 2>/dev/null")
+        elif action == 'prev': os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"window.history.back()\"' 2>/dev/null")
+    elif target == "spotify": os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
+    elif target == "music": os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
     else:
         cmd_key = {'play': 'playpause', 'next': 'nexttrack', 'prev': 'prevtrack'}[action]
         pyautogui.press(cmd_key)
@@ -189,7 +178,10 @@ def get_ip():
     return IP
 
 def run_server():
-    app.run(host='0.0.0.0', port=5005)
+    try:
+        app.run(host='0.0.0.0', port=5005, threaded=True)
+    except Exception as e:
+        gui_queue.put(f'error:{str(e)}')
 
 def update_app():
     try:
@@ -208,11 +200,10 @@ def update_app():
         if os.path.exists(static_dest): shutil.rmtree(static_dest)
         shutil.copytree(os.path.join(new_server_dir, "static"), static_dest)
         shutil.rmtree(temp_dir)
-        messagebox.showinfo("Update Complete", "Josh S updated! Restarting...")
         try: subprocess.Popen(["open", "-n", "/Applications/Josh S.app"])
         except: pass
         os._exit(0)
-    except Exception as e: messagebox.showerror("Update Failed", str(e))
+    except Exception as e: gui_queue.put(f'error:Update failed: {str(e)}')
 
 def open_settings():
     os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'")
@@ -229,7 +220,6 @@ class ModernButton(tk.Frame):
         self.label.bind("<Enter>", lambda e: self.config(bg=self.lighten(bg_color)))
         self.bind("<Leave>", lambda e: self.config(bg=bg_color))
         self.label.bind("<Leave>", lambda e: self.config(bg=bg_color))
-
     def lighten(self, hex_color):
         if hex_color == "#007aff": return "#2691ff"
         if hex_color == "#222222": return "#333333"
@@ -241,9 +231,11 @@ def start_gui():
     root.geometry("450x550")
     root.configure(bg='#000000')
     root.resizable(False, False)
-    
-    # Start hidden
-    root.withdraw()
+
+    # Startup logic: Show for 3 seconds then hide
+    def auto_hide():
+        time.sleep(3)
+        gui_queue.put('hide')
 
     def check_queue():
         try:
@@ -253,13 +245,18 @@ def start_gui():
                 root.lift()
                 root.attributes("-topmost", True)
                 root.attributes("-topmost", False)
+            elif msg == 'hide':
+                root.withdraw()
             elif msg == 'update':
                 threading.Thread(target=update_app).start()
-        except queue.Empty:
-            pass
+            elif msg.startswith('error:'):
+                root.deiconify()
+                messagebox.showerror("Josh S Error", msg.replace('error:', ''))
+        except queue.Empty: pass
         root.after(100, check_queue)
 
     root.after(100, check_queue)
+    threading.Thread(target=auto_hide, daemon=True).start()
 
     title_font = tkfont.Font(family="Helvetica", size=32, weight="bold")
     subtitle_font = tkfont.Font(family="Helvetica", size=14)
@@ -296,12 +293,7 @@ def start_gui():
     ModernButton(btn_frame, "Fix Permissions", open_settings, "#222222", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
     ModernButton(btn_frame, "Hide Window", lambda: root.withdraw(), "#333333", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
 
-    def on_closing():
-        root.withdraw()
-        # To truly quit, user would need to quit from the system or we add a quit button
-        # But for now, closing the window just hides it.
-        # os._exit(0) 
-
+    def on_closing(): root.withdraw()
     root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
 
