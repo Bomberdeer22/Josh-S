@@ -20,7 +20,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 @app.route('/')
@@ -85,11 +85,14 @@ def volume():
 def brightness():
     data = request.json
     action = data.get('action', 'up')
-    # Using a more universal AppleScript for brightness that triggers system key codes
     if action == 'up':
-        os.system("osascript -e 'tell application \"System Events\" to key code 144'")
-    elif action == 'down':
-        os.system("osascript -e 'tell application \"System Events\" to key code 145'")
+        # Method 1: System Key Code
+        os.system("osascript -e 'tell application \"System Events\" to key code 144' 2>/dev/null")
+        # Method 2: Standard PyAutoGUI key
+        pyautogui.press('brightnessup')
+    else:
+        os.system("osascript -e 'tell application \"System Events\" to key code 145' 2>/dev/null")
+        pyautogui.press('brightnessdown')
     return jsonify({"status": "success"})
 
 @app.route('/media', methods=['POST'])
@@ -97,27 +100,20 @@ def media():
     data = request.json
     action = data.get('action', 'play')
     
-    # Universal media keys via AppleScript (talks to Chrome, Spotify, Music app, etc.)
-    script = ""
     if action == 'play':
-        script = "tell application \"System Events\" to key code 131" # High-level play/pause
+        # Universal play/pause
+        pyautogui.press('playpause')
+        # Target specific apps just in case
+        os.system("osascript -e 'if application \"Spotify\" is running then tell application \"Spotify\" to playpause' 2>/dev/null")
+        os.system("osascript -e 'if application \"Music\" is running then tell application \"Music\" to playpause' 2>/dev/null")
     elif action == 'next':
-        script = "tell application \"System Events\" to key code 124 using {command down}" # Often works for apps, or try native
+        pyautogui.press('nexttrack')
+        os.system("osascript -e 'if application \"Spotify\" is running then tell application \"Spotify\" to next track' 2>/dev/null")
+        os.system("osascript -e 'if application \"Music\" is running then tell application \"Music\" to next track' 2>/dev/null")
     elif action == 'prev':
-        script = "tell application \"System Events\" to key code 123 using {command down}"
-
-    # Specifically targeting Spotify and Chrome/Music via standard media key events
-    if action == 'play':
-        os.system("osascript -e 'tell application \"System Events\" to key code 131'") # Native Play/Pause
-    elif action == 'next':
-        os.system("osascript -e 'tell application \"System Events\" to key code 124'") # Try arrow right or specific media keys
-        # Specific Spotify/Music support
-        os.system("osascript -e 'if application \"Spotify\" is running then tell application \"Spotify\" to next track'")
-        os.system("osascript -e 'if application \"Music\" is running then tell application \"Music\" to next track'")
-    elif action == 'prev':
-        os.system("osascript -e 'tell application \"System Events\" to key code 123'")
-        os.system("osascript -e 'if application \"Spotify\" is running then tell application \"Spotify\" to previous track'")
-        os.system("osascript -e 'if application \"Music\" is running then tell application \"Music\" to previous track'")
+        pyautogui.press('prevtrack')
+        os.system("osascript -e 'if application \"Spotify\" is running then tell application \"Spotify\" to previous track' 2>/dev/null")
+        os.system("osascript -e 'if application \"Music\" is running then tell application \"Music\" to previous track' 2>/dev/null")
         
     return jsonify({"status": "success"})
 
@@ -125,8 +121,11 @@ def media():
 def launch():
     data = request.json
     app_name = data.get('app', '')
-    if app_name == 'browser': os.system("open -a 'Safari'")
-    elif app_name == 'finder': os.system("open ~")
+    if app_name == 'browser': 
+        # Tries to open Chrome, falls back to Safari
+        os.system("open -a 'Google Chrome' || open -a 'Safari'")
+    elif app_name == 'finder': 
+        os.system("open ~")
     return jsonify({"status": "success"})
 
 @app.route('/lock', methods=['POST'])
