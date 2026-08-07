@@ -32,7 +32,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "3.1.1"
+VERSION = "3.1.2"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()

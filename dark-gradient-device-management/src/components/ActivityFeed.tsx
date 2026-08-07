@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Upload, Download, RefreshCw, Plug, Unplug, AlertTriangle } from 'lucide-react';
+import { Upload, Download, RefreshCw, Plug, Unplug, AlertTriangle, Trash2 } from 'lucide-react';
 import type { Activity } from '../data/devices';
 
 interface ActivityFeedProps {
@@ -13,6 +13,7 @@ const iconMap = {
   connect: Plug,
   disconnect: Unplug,
   alert: AlertTriangle,
+  trash: Trash2,
 };
 
 const colorMap = {
@@ -22,6 +23,7 @@ const colorMap = {
   connect: 'text-green-400 bg-green-500/10',
   disconnect: 'text-zinc-400 bg-zinc-500/10',
   alert: 'text-amber-400 bg-amber-500/10',
+  trash: 'text-red-400 bg-red-500/10',
 };
 
 export default function ActivityFeed({ activities }: ActivityFeedProps) {
@@ -35,18 +37,19 @@ export default function ActivityFeed({ activities }: ActivityFeedProps) {
       <div className="px-5 py-4 border-b border-white/[0.06]">
         <h3 className="text-sm font-semibold text-white">Recent Activity</h3>
       </div>
-      <div className="divide-y divide-white/[0.04]">
-        {activities.map((activity, i) => {
-          const Icon = iconMap[activity.icon];
+      <div className="divide-y divide-white/[0.04] max-h-[400px] overflow-y-auto">
+        {(activities || []).map((activity, i) => {
+          const Icon = iconMap[activity.icon as keyof typeof iconMap] || RefreshCw;
+          const colors = colorMap[activity.icon as keyof typeof colorMap] || colorMap.sync;
           return (
             <motion.div
               key={activity.id}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3, delay: 0.4 + i * 0.05 }}
+              transition={{ duration: 0.3, delay: 0.1 + i * 0.02 }}
               className="flex items-center gap-3 px-5 py-3 hover:bg-white/[0.02] transition-colors"
             >
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${colorMap[activity.icon]}`}>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${colors}`}>
                 <Icon className="w-3.5 h-3.5" />
               </div>
               <div className="flex-1 min-w-0">

@@ -68,15 +68,16 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const filteredDevices = data.devices.filter((device) => {
+  const filteredDevices = (data.devices || []).filter((device) => {
+    if (!device) return false;
     const matchesSearch =
-      device.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      device.model.toLowerCase().includes(searchQuery.toLowerCase());
+      (device.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (device.model || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = filterStatus === 'all' || device.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
-  const onlineCount = data.devices.filter((d) => d.status !== 'disconnected').length;
+  const onlineCount = (data.devices || []).filter((d) => d && d.status !== 'disconnected').length;
 
   const triggerAction = async (endpoint: string, payload = {}) => {
     try {
