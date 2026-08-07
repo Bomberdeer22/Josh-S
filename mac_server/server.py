@@ -6,7 +6,7 @@ import os
 import socket
 import threading
 import tkinter as tk
-from tkinter import messagebox, font as tkfont
+from tkinter import messagebox, font as tkfont, ttk
 import subprocess
 import requests
 import zipfile
@@ -14,6 +14,7 @@ import shutil
 import io
 import queue
 import time
+from datetime import datetime
 
 # Advanced Mac Controllers
 try:
@@ -31,11 +32,12 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.8.0"
+VERSION = "2.9.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
-active_connections = {} # Stores {ip: {last_seen: time, user_agent: str}}
+# Detailed connection tracking
+active_connections = {} # {ip: {"name": str, "connected_at": str, "ua": str}}
 
 # --- Advanced Location Engine ---
 if HAS_PRO_CONTROLLER:
@@ -112,10 +114,22 @@ def set_mac_brightness(level):
 def register():
     ip = request.remote_addr
     ua = request.headers.get('User-Agent', 'Unknown Device')
-    # Simple logic to identify Samsung/Android
-    device_name = "Samsung Device" if "Android" in ua else "Mobile Device"
-    active_connections[ip] = {"name": device_name, "last_seen": time.time()}
+    
+    # Identify device name
+    if "Android" in ua: name = "Samsung Device"
+    elif "iPhone" in ua: name = "iPhone"
+    elif "Macintosh" in ua: name = "MacBook"
+    else: name = "Mobile Device"
+    
+    active_connections[ip] = {
+        "name": name,
+        "ip": ip,
+        "connected_at": datetime.now().strftime("%H:%M:%S"),
+        "ua": ua
+    }
+    
     gui_queue.put(('view', 'connections'))
+    gui_queue.put(('update_list', None))
     return jsonify({"status": "registered"})
 
 @app.route('/lost_info', methods=['GET'])
@@ -150,7 +164,7 @@ def index(): return send_from_directory(app.static_folder, 'index.html')
 @app.route('/<path:path>')
 def static_proxy(path): return send_from_directory(app.static_folder, path)
 
-# ... (Standard Control APIs: move, click, scroll, type, key, shortcut, volume, brightness, media, launch, lock, empty_trash)
+# Standard Control APIs
 @app.route('/move', methods=['POST'])
 def move_mouse():
     pyautogui.moveRel(request.json.get('dx', 0), request.json.get('dy', 0))
@@ -268,13 +282,24 @@ def update_app():
 def open_settings_location(): os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices'")
 
 class ModernButton(tk.Frame):
-    def __init__(self, parent, text, command, bg_color, fg_color, font):
+    def __init__(self, parent, text, command, bg_color, fg_color, font, hover_color=None):
         super().__init__(parent, bg=bg_color, padx=10, pady=5)
+        self.bg_color = bg_color
+        self.hover_color = hover_color or self.lighten(bg_color)
         self.command = command
         self.label = tk.Label(self, text=text, fg=fg_color, bg=bg_color, font=font)
         self.label.pack(expand=True, fill='both')
         self.label.bind("<Button-1>", lambda e: self.command())
         self.bind("<Button-1>", lambda e: self.command())
+        self.label.bind("<Enter>", lambda e: self.on_enter())
+        self.label.bind("<Leave>", lambda e: self.on_leave())
+
+    def on_enter(self): self.config(bg=self.hover_color); self.label.config(bg=self.hover_color)
+    def on_leave(self): self.config(bg=self.bg_color); self.label.config(bg=self.bg_color)
+    def lighten(self, c):
+        if c == "#007aff": return "#2691ff"
+        if c == "#222222": return "#333333"
+        return c
 
 # --- Lost Mode Window ---
 lost_window = None
@@ -299,11 +324,10 @@ is_visible = True
 def start_gui():
     root = tk.Tk()
     root.title(f"Josh S")
-    root.geometry("450x580")
+    root.geometry("500x650")
     root.configure(bg='#000000')
     root.resizable(False, False)
 
-    # Frame Switcher
     container = tk.Frame(root, bg="#000000")
     container.pack(expand=True, fill='both')
 
@@ -313,52 +337,72 @@ def start_gui():
         frame = frames[name]
         frame.tkraise()
 
-    # Views
     connect_frame = tk.Frame(container, bg="#000000", padx=30, pady=30)
     manage_frame = tk.Frame(container, bg="#000000", padx=30, pady=30)
 
     for f in (connect_frame, manage_frame):
         f.grid(row=0, column=0, sticky='nsew')
         f.grid_propagate(False)
-        f.config(width=450, height=580)
+        f.config(width=500, height=650)
 
     frames['connect'] = connect_frame
     frames['connections'] = manage_frame
 
     # --- Connect View ---
-    tk.Label(connect_frame, text="Josh S", font=("Helvetica", 32, "bold"), fg="#ffffff", bg='#000000').pack()
-    tk.Label(connect_frame, text=f"v{VERSION}", font=("Helvetica", 10), fg="#555555", bg='#000000').pack()
+    tk.Label(connect_frame, text="Josh S", font=("Helvetica", 36, "bold"), fg="#ffffff", bg='#000000').pack()
+    tk.Label(connect_frame, text=f"Remote Control Engine v{VERSION}", font=("Helvetica", 10), fg="#555555", bg='#000000').pack()
     
-    st_b = tk.Frame(connect_frame, bg='#111111', pady=10, padx=20); st_b.pack(pady=20, fill='x')
-    tk.Label(st_b, text="Ready for Connection", font=("Helvetica", 14), fg="#007aff", bg='#111111').pack()
-    tk.Label(st_b, text="Scan with your phone", font=("Helvetica", 10), fg="#888888", bg='#111111').pack()
+    st_b = tk.Frame(connect_frame, bg='#111111', pady=15, padx=20); st_b.pack(pady=30, fill='x')
+    tk.Label(st_b, text="Awaiting Connection", font=("Helvetica", 16), fg="#007aff", bg='#111111').pack()
+    tk.Label(st_b, text="Open the link below on your phone", font=("Helvetica", 10), fg="#888888", bg='#111111').pack()
     
     url = f"http://{get_ip()}:5005"
-    tk.Label(connect_frame, text="CONNECT YOUR PHONE", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 10))
-    e_u = tk.Entry(connect_frame, font=("Courier", 20, "bold"), justify='center', bd=0, bg='#0a0a0a', fg="#ffffff")
-    e_u.insert(0, url); e_u.config(state='readonly'); e_u.pack(pady=5, ipady=10)
+    tk.Label(connect_frame, text="YOUR MAC URL", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 5))
+    e_u = tk.Entry(connect_frame, font=("Courier", 22, "bold"), justify='center', bd=0, bg='#0a0a0a', fg="#ffffff")
+    e_u.insert(0, url); e_u.config(state='readonly'); e_u.pack(pady=10, ipady=15, fill='x')
 
-    # --- Manage View ---
-    tk.Label(manage_frame, text="Connections", font=("Helvetica", 28, "bold"), fg="#ffffff", bg='#000000').pack()
-    conn_list_frame = tk.Frame(manage_frame, bg="#111111", pady=20, padx=20)
-    conn_list_frame.pack(pady=20, fill='x')
+    ModernButton(connect_frame, "View Active Connections", lambda: show_frame('connections'), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=20, fill='x')
+
+    # --- Connections View ---
+    tk.Label(manage_frame, text="Connected Devices", font=("Helvetica", 28, "bold"), fg="#ffffff", bg='#000000').pack(pady=(0, 20))
     
-    conn_label = tk.Label(conn_list_frame, text="1 Active Remote", font=("Helvetica", 16), fg="#4CAF50", bg="#111111")
-    conn_label.pack()
-    
-    device_info_label = tk.Label(conn_list_frame, text="Samsung Device (Connected)", font=("Helvetica", 12), fg="#888888", bg="#111111")
-    device_info_label.pack(pady=5)
+    list_container = tk.Frame(manage_frame, bg="#000000")
+    list_container.pack(expand=True, fill='both')
 
-    ModernButton(manage_frame, "Add New Device", lambda: show_frame('connect'), "#222222", "#ffffff", ("Helvetica", 12, "bold")).pack(pady=20, fill='x')
+    def refresh_connection_list():
+        for widget in list_container.winfo_children():
+            widget.destroy()
+        
+        if not active_connections:
+            tk.Label(list_container, text="No devices connected", font=("Helvetica", 14), fg="#444", bg="#000000").pack(pady=100)
+        else:
+            for ip, info in active_connections.items():
+                card = tk.Frame(list_container, bg="#111111", pady=15, padx=15)
+                card.pack(fill='x', pady=5)
+                
+                name_lbl = tk.Label(card, text=info['name'], font=("Helvetica", 16, "bold"), fg="#ffffff", bg="#111111")
+                name_lbl.pack(side='top', anchor='w')
+                
+                details = f"IP: {ip}  •  Connected: {info['connected_at']}"
+                tk.Label(card, text=details, font=("Helvetica", 10), fg="#888888", bg="#111111").pack(side='top', anchor='w', pady=2)
+                
+                def revoke(target_ip=ip):
+                    if target_ip in active_connections:
+                        del active_connections[target_ip]
+                    refresh_connection_list()
 
-    # Bottom Actions (Global)
-    def create_bottom_buttons(parent):
-        btn_f = tk.Frame(parent, bg='#000000'); btn_f.pack(side='bottom', pady=10, fill='x')
-        ModernButton(btn_f, "Check for Updates", lambda: threading.Thread(target=update_app).start(), "#007aff", "white", ("Helvetica", 12, "bold")).pack(side='top', fill='x', pady=5)
-        ModernButton(btn_f, "Hide Window", lambda: gui_queue.put('hide'), "#333333", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
+                ModernButton(card, "Revoke Access", revoke, "#331111", "#ff3b30", ("Helvetica", 10, "bold")).pack(side='right', pady=5)
 
-    create_bottom_buttons(connect_frame)
-    create_bottom_buttons(manage_frame)
+    ModernButton(manage_frame, "Add New Device", lambda: show_frame('connect'), "#007aff", "white", ("Helvetica", 12, "bold")).pack(pady=10, fill='x')
+
+    # Bottom Global Actions
+    def add_footer(parent):
+        f = tk.Frame(parent, bg='#000000'); f.pack(side='bottom', fill='x', pady=10)
+        ModernButton(f, "Check for Updates", lambda: threading.Thread(target=update_app).start(), "#1a1a1a", "#888888", ("Helvetica", 11)).pack(side='left', expand=True, fill='x', padx=5)
+        ModernButton(f, "Hide Window", lambda: gui_queue.put('hide'), "#1a1a1a", "#888888", ("Helvetica", 11)).pack(side='left', expand=True, fill='x', padx=5)
+
+    add_footer(connect_frame)
+    add_footer(manage_frame)
 
     show_frame('connect')
 
@@ -375,8 +419,9 @@ def start_gui():
                 if lost_window: lost_window.destroy(); lost_window = None
             elif isinstance(msg, tuple) and msg[0] == 'view':
                 show_frame(msg[1])
-                # Show window if it was hidden when a device connected
                 root.deiconify(); root.lift(); is_visible = True
+            elif msg == 'update_list':
+                refresh_connection_list()
             elif msg.startswith('error:'):
                 root.deiconify(); is_visible = True; messagebox.showerror("Josh S Error", msg.replace('error:', ''))
         except queue.Empty: pass
