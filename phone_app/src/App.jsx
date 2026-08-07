@@ -4,7 +4,7 @@ import {
   Delete, CornerDownLeft, Space, Play, SkipBack, SkipForward, 
   Sun, Moon, Monitor, Search, LayoutGrid, Globe, FolderOpen,
   ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Music,
-  Eye, RefreshCw, Power
+  Eye, RefreshCw, Trash2
 } from 'lucide-react';
 
 function App() {
@@ -116,7 +116,7 @@ function App() {
           <h1 style={styles.title}>Josh S</h1>
           <div style={styles.headerBtns}>
               <button style={styles.headerBtn} onClick={() => sendCommand('show_window')}>
-                <Eye size={16} /> Show Mac
+                <Eye size={16} /> Show
               </button>
               <button style={{...styles.headerBtn, backgroundColor: '#ff3b30'}} onClick={() => sendCommand('lock')}>
                 <Lock size={16} /> Lock
@@ -266,6 +266,10 @@ function App() {
               <button style={styles.appBtn} onClick={() => sendCommand('key', { key: 'f11' })}>
                 <Monitor size={24} />
                 <span>Desktop</span>
+              </button>
+              <button style={{...styles.appBtn, color: '#ff3b30'}} onClick={() => { if(window.confirm("Empty trash?")) sendCommand('empty_trash') }}>
+                <Trash2 size={24} color="#ff3b30" />
+                <span>Empty Trash</span>
               </button>
               <button style={styles.appBtn} onClick={() => sendCommand('shortcut', { keys: ['command', 'q'] })}>
                 <X size={24} color="#ff3b30" />

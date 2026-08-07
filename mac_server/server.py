@@ -30,7 +30,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.2.1"
+VERSION = "2.3.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
@@ -136,8 +136,10 @@ def media():
             if "success" not in result.stdout: pyautogui.press('space')
         elif action == 'next': os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"document.querySelector(\\\".ytp-next-button\\\")?.click()\"' 2>/dev/null")
         elif action == 'prev': os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"window.history.back()\"' 2>/dev/null")
-    elif target == "spotify": os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
-    elif target == "music": os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
+    elif target == "spotify":
+        os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
+    elif target == "music":
+        os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
     else:
         cmd_key = {'play': 'playpause', 'next': 'nexttrack', 'prev': 'prevtrack'}[action]
         pyautogui.press(cmd_key)
@@ -156,6 +158,11 @@ def launch():
 def lock_mac():
     os.system("pmset displaysleepnow")
     os.system("osascript -e 'tell application \"System Events\" to lock screen' &")
+    return jsonify({"status": "success"})
+
+@app.route('/empty_trash', methods=['POST'])
+def empty_trash():
+    os.system("osascript -e 'tell application \"Finder\" to empty trash' &")
     return jsonify({"status": "success"})
 
 @app.route('/show_window', methods=['POST'])
@@ -232,7 +239,6 @@ def start_gui():
     root.configure(bg='#000000')
     root.resizable(False, False)
 
-    # Startup logic: Show for 3 seconds then hide
     def auto_hide():
         time.sleep(3)
         gui_queue.put('hide')
