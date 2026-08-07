@@ -13,14 +13,44 @@ import zipfile
 import shutil
 import io
 
+# Try to load Pro Display Services for hardware-level control
+try:
+    import objc
+    from Foundation import NSBundle
+    HAS_OBJC = True
+except ImportError:
+    HAS_OBJC = False
+
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.6.1"
+VERSION = "1.7.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
+
+def set_mac_brightness(level):
+    """Sets brightness using Pro Display Services (Hardware Level)"""
+    success = False
+    if HAS_OBJC:
+        try:
+            bundle_path = '/System/Library/PrivateFrameworks/DisplayServices.framework'
+            if os.path.exists(bundle_path):
+                ds_bundle = NSBundle.bundleWithPath_(bundle_path)
+                functions = [('DisplayServicesSetBrightness', b'vIf')]
+                objc.loadBundleFunctions(ds_bundle, globals(), functions)
+                # Try both common display IDs
+                DisplayServicesSetBrightness(0, level)
+                DisplayServicesSetBrightness(1, level)
+                success = True
+        except Exception as e:
+            print(f"Hardware Brightness Error: {e}")
+    
+    if not success:
+        # Fallback to AppleScript
+        os.system(f"osascript -e 'tell application \"System Events\" to set brightness of display 1 to {level}' 2>/dev/null")
+        os.system(f"osascript -e 'tell application \"System Settings\" to reveal anchor \"display\" of pane id \"com.apple.Displays-Settings.extension\"' 2>/dev/null")
 
 @app.route('/')
 def index():
@@ -85,15 +115,11 @@ def brightness():
     data = request.json
     level = data.get('level') # 0.0 to 1.0
     
-    # Method 1: The 'CoreDisplay' AppleScript (Strongest method for Monterey/Ventura/Sonoma)
     if level is not None:
-        os.system(f"osascript -e 'tell application \"System Events\" to set brightness of display 1 to {level}'")
-        # Method 2: Shell command fallback
-        os.system(f"brightness {level} 2>/dev/null")
+        set_mac_brightness(float(level))
     else:
         action = data.get('action', 'up')
-        # Triple Fallback
-        os.system(f"osascript -e 'tell application \"System Events\" to key code {'144' if action == 'up' else '145'}'")
+        # Incremental fallback
         pyautogui.press('brightnessup' if action == 'up' else 'brightnessdown')
             
     return jsonify({"status": "success"})
@@ -104,13 +130,19 @@ def media():
     action = data.get('action', 'play')
     target = data.get('target', 'auto')
     
-    if target == "chrome":
+    if target == "chrome" or target == "browser":
+        # Multi-stage Browser Control
         if action == 'play':
+            # Try JS first (No swipe)
             os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"var v=document.querySelector(\\\"video, audio\\\"); if(v) v.paused ? v.play() : v.pause()\"' 2>/dev/null")
+            # Space fallback
+            pyautogui.press('space')
         elif action == 'next':
             os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"document.querySelector(\\\".ytp-next-button\\\")?.click()\"' 2>/dev/null")
+            pyautogui.hotkey('shift', 'n')
         elif action == 'prev':
             os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"window.history.back()\"' 2>/dev/null")
+            pyautogui.hotkey('shift', 'p')
             
     elif target == "spotify":
         os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
@@ -159,7 +191,7 @@ def update_app():
         headers = {'User-Agent': 'Mozilla/5.0'}
         r = requests.get(REPO_URL, headers=headers, timeout=15)
         if r.status_code == 404:
-            messagebox.showerror("Update Failed", "Repo is PRIVATE. Make it PUBLIC for updates to work.")
+            messagebox.showerror("Update Failed", "Repo is PRIVATE.")
             return
         z = zipfile.ZipFile(io.BytesIO(r.content))
         base_path = os.path.dirname(os.path.abspath(__file__))
@@ -174,7 +206,7 @@ def update_app():
         if os.path.exists(static_dest): shutil.rmtree(static_dest)
         shutil.copytree(os.path.join(new_server_dir, "static"), static_dest)
         shutil.rmtree(temp_dir)
-        messagebox.showinfo("Update Complete", "Josh S has been updated! The app will now restart.")
+        messagebox.showinfo("Update Complete", "Josh S updated! Restarting...")
         try: subprocess.Popen(["open", "-n", "/Applications/Josh S.app"])
         except: pass
         os._exit(0)
@@ -191,7 +223,7 @@ def start_gui():
     url = f"http://{ip_addr}:5005"
 
     tk.Label(root, text="Josh S", font=("Arial", 28, "bold"), fg="#ffffff", bg='#121212').pack(pady=15)
-    tk.Label(root, text="Server Status: ONLINE", font=("Arial", 12, "bold"), fg="#4CAF50", bg='#121212').pack()
+    tk.Label(root, text="Pro Hardware Control Active", font=("Arial", 10), fg="#4CAF50", bg='#121212').pack()
     tk.Label(root, text=f"Local URL: {url}", font=("Arial", 10), fg="#888", bg='#121212').pack(pady=5)
     tk.Label(root, text="Open address on your phone:", font=("Arial", 11), fg="#aaaaaa", bg='#121212').pack(pady=10)
 
