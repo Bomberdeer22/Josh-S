@@ -134,6 +134,9 @@ function App() {
         <div style={styles.headerTop}>
           <h1 style={styles.title}>Josh S</h1>
           <div style={styles.headerBtns}>
+              <button style={styles.headerBtn} onClick={() => window.location.reload()}>
+                <RefreshCw size={16} /> Refresh
+              </button>
               <button style={styles.headerBtn} onClick={() => sendCommand('show_window')}>
                 <Eye size={16} /> Show
               </button>
