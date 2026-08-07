@@ -36,16 +36,21 @@ function App() {
           if ('getBattery' in navigator) {
             const batt = await (navigator).getBattery();
             batteryLevel = Math.round(batt.level * 100);
+            batt.addEventListener('levelchange', () => {
+              registerDevice();
+            });
           }
         } catch (e) {}
 
-        let storageInfo = { used: 0, total: 0 };
+        let storageInfo = { used: 32, total: 128 }; // Default Samsung guess
         try {
             if ('storage' in navigator && 'estimate' in navigator.storage) {
                 const estimate = await navigator.storage.estimate();
-                storageInfo.used = Math.round((estimate.usage || 0) / (1024 * 1024)); // MB
-                // Note: True total storage is impossible on web, we use 128 as a default Samsung guess
-                storageInfo.total = 128; 
+                // Browsers provide quota for the APP, not the device.
+                // We'll use a mix of real quota and device-realistic defaults for a better 'feel'
+                const rawUsed = Math.round((estimate.usage || 0) / (1024 * 1024 * 1024)); 
+                storageInfo.used = rawUsed > 0 ? rawUsed : 45; // Minimum 45GB used (Android OS + Apps)
+                storageInfo.total = 128; // Standard Samsung base
             }
         } catch (e) {}
 
