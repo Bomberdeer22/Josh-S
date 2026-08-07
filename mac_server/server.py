@@ -33,7 +33,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "3.2.1"
+VERSION = "3.2.2"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
@@ -163,16 +163,22 @@ def admin_info():
     
     devices = []
     for ip, info in active_connections.items():
+        dev_type = "android" if "Samsung" in info.get('model', '') or "Android" in info.get('platform', '') else "iphone"
+        
+        # Merge manual overrides from phone if they exist
+        batt = int(info.get('battery', 88))
+        if batt == 0: batt = 88 # Default if scan blocked
+        
         devices.append({
             "id": ip,
             "name": info.get('name', 'Mobile Device'),
-            "type": "android" if "Samsung" in info.get('model', '') or "Android" in info.get('platform', '') else "iphone",
+            "type": dev_type,
             "model": info.get('model', 'Samsung Galaxy'),
-            "os": info.get('platform', 'Android 15'),
-            "battery": int(info.get('battery', 0)),
+            "os": info.get('platform', 'Android 15' if dev_type == "android" else "iOS 18"),
+            "battery": batt,
             "storage": info.get('storage', {"used": 45, "total": 128}),
             "status": "connected",
-            "lastSeen": info.get('connected_at', 'Now'),
+            "lastSeen": "Now",
             "ip": ip
         })
         
@@ -187,17 +193,21 @@ def admin_info():
 def register():
     ip = request.remote_addr
     specs = request.json
-    active_connections[ip] = {
-        "name": specs.get('model', 'Samsung Device'),
-        "model": specs.get('model', 'Samsung Device'),
-        "platform": specs.get('platform', 'Unknown'),
-        "battery": specs.get('battery', 0),
-        "storage": specs.get('storage', {"used": 0, "total": 0}), # STORE STORAGE
-        "screen": specs.get('screen', 'Unknown'),
-        "connected_at": datetime.now().strftime("%H:%M:%S"),
-        "last_seen": time.time()
-    }
-    add_activity(active_connections[ip]['name'], f"Connected • {specs.get('battery', 0)}% Batt", "connect")
+    
+    # Keep existing data and only update what's new
+    if ip not in active_connections:
+        active_connections[ip] = {}
+        
+    active_connections[ip].update(specs)
+    
+    if 'model' in specs:
+        active_connections[ip]['name'] = specs['model']
+        
+    active_connections[ip]['last_seen'] = time.time()
+    if 'connected_at' not in active_connections[ip]:
+        active_connections[ip]['connected_at'] = datetime.now().strftime("%H:%M:%S")
+        add_activity(active_connections[ip].get('name', 'Device'), f"Joined • {active_connections[ip].get('battery', 0)}% Batt", "connect")
+    
     gui_queue.put('refresh_view')
     return jsonify({"status": "registered"})
 
@@ -370,6 +380,8 @@ def show_lost_screen(message):
         lost_window.mainloop()
     threading.Thread(target=create, daemon=True).start()
 
+def open_settings(): os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices'")
+
 def start_gui():
     root = tk.Tk()
     root.title(f"Josh S Setup")
@@ -410,14 +422,16 @@ def start_gui():
             tk.Label(main_container, text="URL FOR PHONE", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 5))
             e_u = tk.Entry(main_container, font=("Courier", 22, "bold"), justify='center', bd=0, bg='#0a0a0a', fg="#ffffff")
             e_u.insert(0, url); e_u.config(state='readonly'); e_u.pack(pady=10, ipady=15, fill='x')
-            ModernButton(main_container, "View Connections", lambda: set_view("manage"), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=20, fill='x')
+            ModernButton(main_container, "View Dashboard", lambda: set_view("manage"), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=20, fill='x')
         else:
-            tk.Label(main_container, text="Active Devices", font=("Helvetica", 28, "bold"), fg="#ffffff", bg='#000000').pack(pady=(0, 20))
+            tk.Label(main_container, text="Connections", font=("Helvetica", 28, "bold"), fg="#ffffff", bg='#000000').pack(pady=(0, 20))
+            if not active_connections:
+                tk.Label(main_container, text="No devices connected", font=("Helvetica", 14), fg="#444", bg="#000000").pack(pady=50)
             for ip, info in active_connections.items():
                 card = tk.Frame(main_container, bg="#111111", pady=10, padx=15); card.pack(fill='x', pady=5)
-                tk.Label(card, text=f"{info['name']} • {info.get('battery', 0)}% Batt", font=("Helvetica", 14, "bold"), fg="#ffffff", bg="#111111").pack(anchor='w')
-                tk.Label(card, text=f"IP: {ip} • {info.get('platform', '??')}", font=("Helvetica", 9), fg="#888888", bg="#111111").pack(anchor='w')
-            ModernButton(main_container, "Open Web Dashboard", lambda: os.system("open http://localhost:5005/admin"), "#007aff", "white", ("Helvetica", 12, "bold")).pack(pady=20, fill='x')
+                tk.Label(card, text=f"{info.get('name', 'Device')} • {info.get('battery', 0)}% Batt", font=("Helvetica", 14, "bold"), fg="#ffffff", bg="#111111").pack(anchor='w')
+                tk.Label(card, text=f"IP: {ip}", font=("Helvetica", 9), fg="#888888", bg="#111111").pack(anchor='w')
+            ModernButton(main_container, "Open Full Dashboard", lambda: os.system("open http://localhost:5005/admin"), "#007aff", "white", ("Helvetica", 12, "bold")).pack(pady=20, fill='x')
             ModernButton(main_container, "Back to Pairing", lambda: set_view("connect"), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=5, fill='x')
         footer = tk.Frame(main_container, bg='#000000'); footer.pack(side='bottom', fill='x')
         ModernButton(footer, "Update", lambda: threading.Thread(target=update_app).start(), "#1a1a1a", "#888888", ("Helvetica", 10)).pack(side='left', expand=True, padx=2)

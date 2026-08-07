@@ -15,6 +15,7 @@ function App() {
   const [mediaTarget, setMediaTarget] = useState('auto');
   const [brightness, setBrightness] = useState(0.5);
   const [volume, setVolume] = useState(50);
+  const [deviceStorage, setDeviceStorage] = useState(128); 
   const [lostMsg, setLostMsg] = useState('This Mac is lost. Please return to Josh S.');
   const [lostInfo, setLostInfo] = useState({ battery: '--', location: 'Fetching...', lat: 0, lon: 0 });
   const [broadcastMsg, setBroadcastMsg] = useState('');
@@ -28,48 +29,35 @@ function App() {
   const brightnessTimer = useRef(null);
   const volumeTimer = useRef(null);
 
-  useEffect(() => {
-    const registerDevice = async () => {
+  const registerDevice = async () => {
+    try {
+      let batteryLevel = 88; 
       try {
-        let batteryLevel = 0;
-        try {
-          if ('getBattery' in navigator) {
-            const batt = await (navigator).getBattery();
-            batteryLevel = Math.round(batt.level * 100);
-            batt.addEventListener('levelchange', () => {
-              registerDevice();
-            });
-          }
-        } catch (e) {}
-
-        let storageInfo = { used: 32, total: 128 }; // Default Samsung guess
-        try {
-            if ('storage' in navigator && 'estimate' in navigator.storage) {
-                const estimate = await navigator.storage.estimate();
-                // Browsers provide quota for the APP, not the device.
-                // We'll use a mix of real quota and device-realistic defaults for a better 'feel'
-                const rawUsed = Math.round((estimate.usage || 0) / (1024 * 1024 * 1024)); 
-                storageInfo.used = rawUsed > 0 ? rawUsed : 45; // Minimum 45GB used (Android OS + Apps)
-                storageInfo.total = 128; // Standard Samsung base
-            }
-        } catch (e) {}
-
-        const specs = {
-          model: navigator.userAgent.includes('Android') ? 'Samsung Galaxy' : 'Mobile Remote',
-          platform: navigator.platform,
-          battery: batteryLevel,
-          storage: storageInfo,
-          screen: `${window.screen.width}x${window.screen.height}`
-        };
-
-        await fetch('/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(specs),
-        });
+        if ('getBattery' in navigator) {
+          const batt = await (navigator).getBattery();
+          batteryLevel = Math.round(batt.level * 100);
+        }
       } catch (e) {}
-    };
+
+      const specs = {
+        model: navigator.userAgent.includes('Android') ? 'Samsung Galaxy' : 'Mobile Remote',
+        platform: navigator.platform,
+        battery: batteryLevel,
+        storage: { used: Math.round(deviceStorage * 0.4), total: deviceStorage },
+        screen: `${window.screen.width}x${window.screen.height}`
+      };
+
+      await fetch('/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(specs),
+      });
+    } catch (e) {}
+  };
+
+  useEffect(() => {
     registerDevice();
+    const regInterval = setInterval(registerDevice, 30000);
 
     const fetchMessages = async () => {
       try {
@@ -82,7 +70,7 @@ function App() {
     };
     const msgInterval = setInterval(fetchMessages, 3000);
 
-    const interval = setInterval(() => {
+    const moveInterval = setInterval(() => {
       if (moveBuffer.current.dx !== 0 || moveBuffer.current.dy !== 0) {
         sendCommand('move', { dx: moveBuffer.current.dx, dy: moveBuffer.current.dy });
         moveBuffer.current = { dx: 0, dy: 0 };
@@ -92,8 +80,12 @@ function App() {
         scrollBuffer.current = 0;
       }
     }, 30);
-    return () => { clearInterval(interval); clearInterval(msgInterval); };
-  }, []);
+    return () => { 
+      clearInterval(regInterval); 
+      clearInterval(msgInterval); 
+      clearInterval(moveInterval);
+    };
+  }, [deviceStorage]);
 
   const sendCommand = async (endpoint, data = {}, method = 'POST') => {
     try {
@@ -267,6 +259,24 @@ function App() {
               <button style={{...styles.appBtn, color: '#ff3b30'}} onClick={() => { if(window.confirm("Empty trash?")) sendCommand('empty_trash') }}><Trash2 size={24} color="#ff3b30" /><span>Empty Trash</span></button>
               <button style={{...styles.appBtn, border: '1px solid #007aff'}} onClick={() => sendCommand('update')}><RefreshCw size={24} color="#007aff" /><span style={{color: '#007aff'}}>Update Mac</span></button>
             </div>
+            <div style={styles.controlSection}>
+              <p style={styles.sectionTitle}>Device Customization</p>
+              <div style={styles.inputRow}>
+                <span style={styles.infoLabel}>Set Phone Storage:</span>
+                <select 
+                    style={styles.textInput} 
+                    value={deviceStorage} 
+                    onChange={(e) => setDeviceStorage(parseInt(e.target.value))}
+                >
+                  <option value="64">64 GB</option>
+                  <option value="128">128 GB</option>
+                  <option value="256">256 GB</option>
+                  <option value="512">512 GB</option>
+                  <option value="1000">1 TB</option>
+                </select>
+              </div>
+            </div>
+
             <div style={styles.controlSection}>
               <p style={styles.sectionTitle}>Global Device Chat</p>
               <div style={styles.msgFeed}>
