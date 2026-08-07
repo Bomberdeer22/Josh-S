@@ -1,22 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, Volume1, VolumeX, MousePointer, Keyboard, Send } from 'lucide-react';
+import { Volume2, Volume1, VolumeX, MousePointer, Keyboard, Send, Lock, Delete, CornerDownLeft, Space } from 'lucide-react';
 
 function App() {
   const [ip, setIp] = useState(window.location.hostname || '');
-  const [status, setStatus] = useState('Disconnected');
+  const [status, setStatus] = useState('Connecting...');
   const [text, setText] = useState('');
   const lastPos = useRef({ x: 0, y: 0 });
   
-  // Buffering for smoother movement
   const moveBuffer = useRef({ dx: 0, dy: 0 });
   const scrollBuffer = useRef(0);
-  const isMoving = useRef(false);
 
-  useEffect(() => {
-    localStorage.setItem('mac_ip', ip);
-  }, [ip]);
-
-  // Movement loop - sends updates every 30ms if there's movement
   useEffect(() => {
     const interval = setInterval(() => {
       if (moveBuffer.current.dx !== 0 || moveBuffer.current.dy !== 0) {
@@ -29,22 +22,19 @@ function App() {
       }
     }, 30);
     return () => clearInterval(interval);
-  }, [ip]);
+  }, []);
 
-  const sendCommand = async (endpoint, data) => {
+  const sendCommand = async (endpoint, data = {}) => {
     try {
       const response = await fetch(`/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      if (response.ok) {
-        setStatus('Connected');
-      } else {
-        setStatus('Error');
-      }
+      if (response.ok) setStatus('Connected');
+      else setStatus('Error');
     } catch (e) {
-      setStatus('Failed to connect');
+      setStatus('Offline');
     }
   };
 
@@ -85,15 +75,15 @@ function App() {
   return (
     <div style={styles.container}>
       <header style={styles.header}>
-        <h1>Josh S Remote</h1>
-        <div style={styles.statusLine}>
-          <input 
-            placeholder="Mac IP" 
-            value={ip} 
-            onChange={(e) => setIp(e.target.value)}
-            style={styles.input}
-          />
-          <span style={{ color: status === 'Connected' ? '#4CAF50' : '#f44336' }}>{status}</span>
+        <div style={styles.headerTop}>
+          <h1 style={styles.title}>Josh S</h1>
+          <button style={styles.lockButton} onClick={() => sendCommand('lock')}>
+            <Lock size={20} /> Lock Mac
+          </button>
+        </div>
+        <div style={styles.statusBadge}>
+          <div style={{...styles.statusDot, backgroundColor: status === 'Connected' ? '#4CAF50' : '#f44336'}} />
+          {status}
         </div>
       </header>
 
@@ -105,8 +95,7 @@ function App() {
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
-            <MousePointer size={48} color="#555" />
-            <p>Touchpad</p>
+            <MousePointer size={40} color="#444" />
           </div>
           <div 
             style={styles.scrollbar}
@@ -114,35 +103,38 @@ function App() {
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
-            ↕️
+            <div style={styles.scrollIcon}>↕</div>
           </div>
         </div>
 
-        <div style={styles.clickButtons}>
-          <button style={styles.button} onClick={() => sendCommand('click', { button: 'left' })}>Left Click</button>
-          <button style={styles.button} onClick={() => sendCommand('click', { button: 'right' })}>Right Click</button>
+        <div style={styles.clickGrid}>
+          <button style={styles.clickBtn} onClick={() => sendCommand('click', { button: 'left' })}>Left Click</button>
+          <button style={styles.clickBtn} onClick={() => sendCommand('click', { button: 'right' })}>Right Click</button>
         </div>
 
-        <div style={styles.controls}>
-          <button style={styles.iconButton} onClick={() => sendCommand('volume', { action: 'down' })}><Volume1 /></button>
-          <button style={styles.iconButton} onClick={() => sendCommand('volume', { action: 'mute' })}><VolumeX /></button>
-          <button style={styles.iconButton} onClick={() => sendCommand('volume', { action: 'up' })}><Volume2 /></button>
+        <div style={styles.controlRow}>
+          <div style={styles.volumeGroup}>
+            <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'down' })}><Volume1 /></button>
+            <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'mute' })}><VolumeX /></button>
+            <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'up' })}><Volume2 /></button>
+          </div>
         </div>
 
-        <form onSubmit={handleTextSubmit} style={styles.keyboardSection}>
-          <input 
-            style={styles.textInput} 
-            value={text} 
-            onChange={(e) => setText(e.target.value)} 
-            placeholder="Type here..."
-          />
-          <button type="submit" style={styles.iconButton}><Send /></button>
-        </form>
-        
-        <div style={styles.specialKeys}>
-            <button style={styles.button} onClick={() => sendCommand('key', { key: 'enter' })}>Enter</button>
-            <button style={styles.button} onClick={() => sendCommand('key', { key: 'backspace' })}>Back</button>
-            <button style={styles.button} onClick={() => sendCommand('key', { key: 'space' })}>Space</button>
+        <div style={styles.keyboardArea}>
+            <form onSubmit={handleTextSubmit} style={styles.inputRow}>
+              <input 
+                style={styles.textInput} 
+                value={text} 
+                onChange={(e) => setText(e.target.value)} 
+                placeholder="Type something..."
+              />
+              <button type="submit" style={styles.sendBtn}><Send size={20}/></button>
+            </form>
+            <div style={styles.specialKeys}>
+                <button style={styles.keyBtn} onClick={() => sendCommand('key', { key: 'backspace' })}><Delete size={18} /></button>
+                <button style={styles.keyBtn} onClick={() => sendCommand('key', { key: 'space' })}><Space size={18}/></button>
+                <button style={styles.keyBtn} onClick={() => sendCommand('key', { key: 'enter' })}><CornerDownLeft size={18}/></button>
+            </div>
         </div>
       </main>
     </div>
@@ -151,8 +143,8 @@ function App() {
 
 const styles = {
   container: {
-    fontFamily: 'system-ui, sans-serif',
-    backgroundColor: '#121212',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    backgroundColor: '#000',
     color: '#fff',
     height: '100vh',
     display: 'flex',
@@ -160,103 +152,158 @@ const styles = {
     overflow: 'hidden',
   },
   header: {
-    padding: '20px',
-    backgroundColor: '#1e1e1e',
-    textAlign: 'center',
-    boxShadow: '0 2px 5px rgba(0,0,0,0.5)',
+    padding: '15px 20px',
+    backgroundColor: '#111',
+    borderBottom: '1px solid #222',
   },
-  statusLine: {
+  headerTop: {
     display: 'flex',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: '10px',
-    marginTop: '10px',
+    marginBottom: '8px',
   },
-  input: {
-    backgroundColor: '#333',
-    border: 'none',
+  title: {
+    fontSize: '20px',
+    fontWeight: '700',
+    margin: 0,
     color: '#fff',
-    padding: '8px',
-    borderRadius: '4px',
-    width: '150px',
+  },
+  lockButton: {
+    backgroundColor: '#ff3b30',
+    color: '#fff',
+    border: 'none',
+    padding: '6px 12px',
+    borderRadius: '20px',
+    fontSize: '13px',
+    fontWeight: '600',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  statusBadge: {
+    fontSize: '12px',
+    color: '#888',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  statusDot: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
   },
   main: {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    padding: '20px',
-    gap: '20px',
+    padding: '15px',
+    gap: '15px',
   },
   touchpadContainer: {
     flex: 1,
     display: 'flex',
-    gap: '10px',
+    gap: '12px',
   },
   touchpad: {
-    flex: 5,
-    backgroundColor: '#2a2a2a',
-    borderRadius: '12px',
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+    borderRadius: '16px',
     display: 'flex',
-    flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
-    border: '2px dashed #444',
+    border: '1px solid #333',
     touchAction: 'none',
   },
   scrollbar: {
-    flex: 1,
-    backgroundColor: '#2a2a2a',
-    borderRadius: '12px',
+    width: '50px',
+    backgroundColor: '#1a1a1a',
+    borderRadius: '16px',
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    border: '2px dashed #444',
+    border: '1px solid #333',
     touchAction: 'none',
-    fontSize: '24px',
   },
-  clickButtons: {
+  scrollIcon: {
+    color: '#444',
+    fontSize: '20px',
+  },
+  clickGrid: {
     display: 'flex',
     gap: '10px',
   },
-  button: {
+  clickBtn: {
     flex: 1,
-    padding: '15px',
-    backgroundColor: '#333',
+    padding: '18px',
+    backgroundColor: '#222',
     color: '#fff',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '16px',
-    fontWeight: 'bold',
+    border: '1px solid #333',
+    borderRadius: '12px',
+    fontSize: '15px',
+    fontWeight: '600',
   },
-  controls: {
+  controlRow: {
     display: 'flex',
-    justifyContent: 'space-around',
-  },
-  iconButton: {
-    padding: '15px',
-    backgroundColor: '#333',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
     justifyContent: 'center',
   },
-  keyboardSection: {
+  volumeGroup: {
+    display: 'flex',
+    backgroundColor: '#1a1a1a',
+    borderRadius: '30px',
+    padding: '4px',
+    border: '1px solid #333',
+  },
+  iconBtn: {
+    padding: '12px 20px',
+    backgroundColor: 'transparent',
+    color: '#fff',
+    border: 'none',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  keyboardArea: {
+    backgroundColor: '#111',
+    padding: '12px',
+    borderRadius: '16px',
+    border: '1px solid #222',
+  },
+  inputRow: {
     display: 'flex',
     gap: '10px',
+    marginBottom: '10px',
   },
   textInput: {
     flex: 1,
-    backgroundColor: '#333',
-    border: 'none',
+    backgroundColor: '#222',
+    border: '1px solid #333',
     color: '#fff',
     padding: '12px',
     borderRadius: '8px',
+    fontSize: '14px',
+  },
+  sendBtn: {
+    backgroundColor: '#007aff',
+    color: '#fff',
+    border: 'none',
+    padding: '0 15px',
+    borderRadius: '8px',
+    display: 'flex',
+    alignItems: 'center',
   },
   specialKeys: {
     display: 'flex',
-    gap: '10px',
+    gap: '8px',
+  },
+  keyBtn: {
+    flex: 1,
+    backgroundColor: '#222',
+    border: '1px solid #333',
+    color: '#aaa',
+    padding: '10px',
+    borderRadius: '8px',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
   }
 };
 

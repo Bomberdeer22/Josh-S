@@ -10,7 +10,8 @@ from tkinter import messagebox
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
-# Disable pyautogui fail-safe and pause for speed
+
+# Optimization: Disable pyautogui fail-safe and pause for speed
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
@@ -57,9 +58,19 @@ def press_key():
 def volume():
     data = request.json
     action = data.get('action', 'up')
-    if action == 'up': pyautogui.press('volumeup')
-    elif action == 'down': pyautogui.press('volumedown')
-    elif action == 'mute': pyautogui.press('volumemute')
+    # Using AppleScript for more reliable volume control on macOS
+    if action == 'up':
+        os.system("osascript -e 'set volume output volume (output volume of (get volume settings) + 5)'")
+    elif action == 'down':
+        os.system("osascript -e 'set volume output volume (output volume of (get volume settings) - 5)'")
+    elif action == 'mute':
+        os.system("osascript -e 'set volume with output muted'")
+    return jsonify({"status": "success"})
+
+@app.route('/lock', methods=['POST'])
+def lock_mac():
+    # Lock the Mac screen via AppleScript
+    os.system("osascript -e 'tell application \"System Events\" to lock screen'")
     return jsonify({"status": "success"})
 
 def get_ip():
@@ -74,7 +85,6 @@ def get_ip():
     return IP
 
 def run_server():
-    # Changed to 5005 to avoid AirPlay conflict on Port 5000
     app.run(host='0.0.0.0', port=5005)
 
 def start_gui():
