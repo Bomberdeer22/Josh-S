@@ -12,6 +12,11 @@ import requests
 import zipfile
 import shutil
 import io
+import logging
+
+# Suppress Flask logs for a cleaner terminal
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -19,7 +24,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.5.1"
+VERSION = "1.5.2"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 @app.route('/')
@@ -85,15 +90,18 @@ def brightness():
     data = request.json
     action = data.get('action', 'up')
     
-    # Send multiple codes for different Mac generations
+    # Try using the 'brightness' command line tool if installed via brew
+    # Otherwise fallback to a set of different AppleScript methods
     if action == 'up':
-        os.system("osascript -e 'tell application \"System Events\" to key code 144' 2>/dev/null") # Standard
-        os.system("osascript -e 'tell application \"System Events\" to key code 113' 2>/dev/null") # F15
-        pyautogui.press('brightnessup')
+        os.system("osascript -e 'tell application \"System Events\" to key code 144' 2>/dev/null")
+        os.system("osascript -e 'tell application \"System Events\" to key code 113' 2>/dev/null")
+        os.system("osascript -e 'tell application \"System Events\" to repeat 1 times \n key code 144 \n end repeat' 2>/dev/null")
+        # Direct IOKit approach via shell
+        os.system("brightness +0.1 2>/dev/null")
     else:
-        os.system("osascript -e 'tell application \"System Events\" to key code 145' 2>/dev/null") # Standard
-        os.system("osascript -e 'tell application \"System Events\" to key code 107' 2>/dev/null") # F14
-        pyautogui.press('brightnessdown')
+        os.system("osascript -e 'tell application \"System Events\" to key code 145' 2>/dev/null")
+        os.system("osascript -e 'tell application \"System Events\" to key code 107' 2>/dev/null")
+        os.system("brightness -0.1 2>/dev/null")
         
     return jsonify({"status": "success"})
 
@@ -103,23 +111,23 @@ def media():
     action = data.get('action', 'play')
     target = data.get('target', 'auto')
     
-    if target == "chrome" or target == "browser":
-        # Strategy: Focus Browser and send "K" (YouTube's play/pause) or Space
-        os.system("osascript -e 'tell application \"Google Chrome\" to activate' 2>/dev/null")
-        os.system("osascript -e 'tell application \"Safari\" to activate' 2>/dev/null")
-        if action == 'play': 
-            pyautogui.press('space')
-        elif action == 'next': 
-            pyautogui.hotkey('shift', 'n') # YouTube next
-        elif action == 'prev': 
-            pyautogui.hotkey('shift', 'p') # YouTube prev
+    if target == "chrome":
+        # Targeted AppleScript for Chrome - No window switching
+        if action == 'play':
+            os.system("osascript -e 'tell application \"Google Chrome\" to execute active tab of window 1 javascript \"document.querySelector(\"\"video, audio\"\").paused ? document.querySelector(\"\"video, audio\"\").play() : document.querySelector(\"\"video, audio\"\").pause()\"' 2>/dev/null")
+            # Fallback for YT specific
+            os.system("osascript -e 'tell application \"Google Chrome\" to execute active tab of window 1 javascript \"document.querySelector(\"\".ytp-play-button\"\")?.click()\"' 2>/dev/null")
+        elif action == 'next':
+            os.system("osascript -e 'tell application \"Google Chrome\" to execute active tab of window 1 javascript \"document.querySelector(\"\".ytp-next-button\"\")?.click()\"' 2>/dev/null")
+        elif action == 'prev':
+            os.system("osascript -e 'tell application \"Google Chrome\" to execute active tab of window 1 javascript \"history.back()\"' 2>/dev/null")
             
     elif target == "spotify":
         os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
     elif target == "music":
         os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
     else:
-        # Default Auto mode
+        # Default Auto mode - Minimal impact
         cmd_key = {'play': 'playpause', 'next': 'nexttrack', 'prev': 'prevtrack'}[action]
         pyautogui.press(cmd_key)
         
@@ -155,7 +163,7 @@ def get_ip():
     return IP
 
 def run_server():
-    app.run(host='0.0.0.0', port=5005)
+    app.run(host='0.0.0.0', port=5005, threaded=True)
 
 def update_app():
     try:
