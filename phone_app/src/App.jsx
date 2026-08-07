@@ -4,11 +4,11 @@ import {
   Delete, CornerDownLeft, Space, Play, SkipBack, SkipForward, 
   Sun, Moon, Monitor, Search, LayoutGrid, Globe, FolderOpen,
   ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, Music,
-  Eye, RefreshCw, Trash2, ShieldAlert, Battery, MapPin, AlertCircle, Power, ExternalLink
+  Eye, RefreshCw, Trash2, ShieldAlert, Battery, MapPin, AlertCircle, Power, ExternalLink, Link
 } from 'lucide-react';
 
 function App() {
-  const [ip, setIp] = useState(window.location.hostname || '');
+  const [ip, setIp] = useState(localStorage.getItem('saved_mac_ip') || window.location.hostname || '');
   const [status, setStatus] = useState('Connecting...');
   const [text, setText] = useState('');
   const [activeTab, setActiveTab] = useState('mouse');
@@ -29,6 +29,19 @@ function App() {
   const brightnessTimer = useRef(null);
   const volumeTimer = useRef(null);
 
+  // Helper to get the full server URL
+  const getServerUrl = (endpoint) => {
+    let target = ip || window.location.hostname;
+    if (!target || target === 'localhost' || target === '127.0.0.1') {
+        target = ip;
+    }
+    if (!target) return `/${endpoint}`; 
+
+    const protocol = 'http:';
+    const host = target.includes(':') ? target : `${target}:5005`;
+    return `${protocol}//${host}/${endpoint}`;
+  };
+
   const registerDevice = async () => {
     try {
       let batteryLevel = 88; 
@@ -47,7 +60,8 @@ function App() {
         screen: `${window.screen.width}x${window.screen.height}`
       };
 
-      await fetch('/register', {
+      const url = getServerUrl('register');
+      await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(specs),
@@ -61,7 +75,8 @@ function App() {
 
     const fetchMessages = async () => {
       try {
-        const res = await fetch('/messages');
+        const url = getServerUrl('messages');
+        const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
           setMessages(data.messages);
@@ -85,18 +100,20 @@ function App() {
       clearInterval(msgInterval); 
       clearInterval(moveInterval);
     };
-  }, [deviceStorage]);
+  }, [ip, deviceStorage]);
 
   const sendCommand = async (endpoint, data = {}, method = 'POST') => {
     try {
+      const url = getServerUrl(endpoint);
       const options = {
         method: method,
         headers: { 'Content-Type': 'application/json' },
       };
       if (method === 'POST') options.body = JSON.stringify(data);
-      const response = await fetch(`/${endpoint}`, options);
+      const response = await fetch(url, options);
       if (response.ok) {
           setStatus('Connected');
+          if (ip) localStorage.setItem('saved_mac_ip', ip);
           if (endpoint === 'lost_info') {
               const info = await response.json();
               setLostInfo(info);
@@ -171,15 +188,20 @@ function App() {
       <header style={styles.header}>
         <div style={styles.headerTop}>
           <h1 style={styles.title}>Josh S</h1>
-          <div style={styles.headerBtns}>
-              <button style={styles.headerBtn} onClick={() => window.location.reload()}><RefreshCw size={16} /> Refresh</button>
-              <button style={styles.headerBtn} onClick={() => sendCommand('show_window')}><Eye size={16} /> Show</button>
-              <button style={{...styles.headerBtn, backgroundColor: '#ff3b30'}} onClick={() => sendCommand('lock')}><Lock size={16} /> Lock</button>
+          <div style={styles.statusBox}>
+            <input 
+                style={styles.ipInput} 
+                value={ip} 
+                onChange={(e) => setIp(e.target.value)} 
+                placeholder="Mac IP..." 
+            />
+            <div style={{...styles.statusDot, backgroundColor: status === 'Connected' ? '#4CAF50' : '#f44336'}} />
           </div>
         </div>
-        <div style={styles.statusBadge}>
-          <div style={{...styles.statusDot, backgroundColor: status === 'Connected' ? '#4CAF50' : '#f44336'}} />
-          {status}
+        <div style={styles.headerRow}>
+          <button style={styles.headerBtn} onClick={() => window.location.reload()}><RefreshCw size={14} /> Refresh</button>
+          <button style={styles.headerBtn} onClick={() => sendCommand('show_window')}><Eye size={14} /> Show Mac</button>
+          <button style={{...styles.headerBtn, backgroundColor: '#ff3b30'}} onClick={() => sendCommand('lock')}><Lock size={14} /> Lock</button>
         </div>
       </header>
 
@@ -262,21 +284,12 @@ function App() {
             <div style={styles.controlSection}>
               <p style={styles.sectionTitle}>Device Customization</p>
               <div style={styles.inputRow}>
-                <span style={styles.infoLabel}>Set Phone Storage:</span>
-                <select 
-                    style={styles.textInput} 
-                    value={deviceStorage} 
-                    onChange={(e) => setDeviceStorage(parseInt(e.target.value))}
-                >
-                  <option value="64">64 GB</option>
-                  <option value="128">128 GB</option>
-                  <option value="256">256 GB</option>
-                  <option value="512">512 GB</option>
-                  <option value="1000">1 TB</option>
+                <span style={styles.infoLabel}>Set Storage:</span>
+                <select style={styles.textInput} value={deviceStorage} onChange={(e) => setDeviceStorage(parseInt(e.target.value))}>
+                  {[64, 128, 256, 512, 1000].map(v => <option key={v} value={v}>{v >= 1000 ? '1 TB' : v + ' GB'}</option>)}
                 </select>
               </div>
             </div>
-
             <div style={styles.controlSection}>
               <p style={styles.sectionTitle}>Global Device Chat</p>
               <div style={styles.msgFeed}>
@@ -285,7 +298,7 @@ function App() {
                 ))}
               </div>
               <form onSubmit={sendBroadcast} style={styles.inputRow}>
-                <input style={styles.textInput} value={broadcastMsg} onChange={(e) => setBroadcastMsg(e.target.value)} placeholder="Broadcast message..." />
+                <input style={styles.textInput} value={broadcastMsg} onChange={(e) => setBroadcastMsg(e.target.value)} placeholder="Message all devices..." />
                 <button type="submit" style={styles.sendBtn}><Send size={18}/></button>
               </form>
             </div>
@@ -336,13 +349,14 @@ function App() {
 
 const styles = {
   container: { fontFamily: '-apple-system, system-ui, sans-serif', backgroundColor: '#000', color: '#fff', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-  header: { padding: '12px 20px', backgroundColor: '#111' },
-  headerTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' },
+  header: { padding: '12px 20px', backgroundColor: '#111', borderBottom: '1px solid #222' },
+  headerTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' },
   title: { fontSize: '18px', fontWeight: '700', margin: 0 },
-  headerBtns: { display: 'flex', gap: '8px' },
-  headerBtn: { backgroundColor: '#222', color: '#fff', border: 'none', padding: '5px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' },
-  statusBadge: { fontSize: '11px', color: '#888', display: 'flex', alignItems: 'center', gap: '4px' },
-  statusDot: { width: '6px', height: '6px', borderRadius: '50%' },
+  statusBox: { display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#000', padding: '4px 10px', borderRadius: '20px', border: '1px solid #333' },
+  ipInput: { backgroundColor: 'transparent', border: 'none', color: '#007aff', fontSize: '11px', width: '80px', textAlign: 'center', outline: 'none' },
+  statusDot: { width: '8px', height: '8px', borderRadius: '50%' },
+  headerRow: { display: 'flex', gap: '8px' },
+  headerBtn: { backgroundColor: '#222', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' },
   tabs: { display: 'flex', backgroundColor: '#111', borderBottom: '1px solid #222' },
   tab: { flex: 1, padding: '12px', backgroundColor: 'transparent', border: 'none', fontSize: '12px', fontWeight: '600' },
   main: { flex: 1, display: 'flex', flexDirection: 'column', padding: '15px', gap: '12px', overflowY: 'auto' },
