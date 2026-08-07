@@ -58,19 +58,22 @@ def press_key():
 def volume():
     data = request.json
     action = data.get('action', 'up')
-    # Using AppleScript for more reliable volume control on macOS
     if action == 'up':
-        os.system("osascript -e 'set volume output volume (output volume of (get volume settings) + 5)'")
+        os.system("osascript -e 'set volume output volume (output volume of (get volume settings) + 7)'")
     elif action == 'down':
-        os.system("osascript -e 'set volume output volume (output volume of (get volume settings) - 5)'")
+        os.system("osascript -e 'set volume output volume (output volume of (get volume settings) - 7)'")
     elif action == 'mute':
-        os.system("osascript -e 'set volume with output muted'")
+        # Toggles mute status
+        os.system("osascript -e 'set volume output muted not (output muted of (get volume settings))'")
     return jsonify({"status": "success"})
 
 @app.route('/lock', methods=['POST'])
 def lock_mac():
-    # Lock the Mac screen via AppleScript
-    os.system("osascript -e 'tell application \"System Events\" to lock screen'")
+    # Attempt to lock the Mac using multiple methods for reliability
+    # Method 1: Sleep the display (usually triggers lock)
+    os.system("pmset displaysleepnow")
+    # Method 2: Tell System Events to lock (standard for macOS)
+    os.system("osascript -e 'tell application \"System Events\" to lock screen' &")
     return jsonify({"status": "success"})
 
 def get_ip():
