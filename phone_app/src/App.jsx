@@ -47,16 +47,35 @@ function App() {
     }
   };
 
+  const latestBrightness = useRef(0.5);
+  const latestVolume = useRef(50);
+  const brightnessTimer = useRef(null);
+  const volumeTimer = useRef(null);
+
   const handleBrightnessChange = (e) => {
     const val = parseFloat(e.target.value);
     setBrightness(val);
-    sendCommand('brightness', { level: val });
+    latestBrightness.current = val;
+    
+    if (brightnessTimer.current) return;
+    
+    brightnessTimer.current = setTimeout(() => {
+      sendCommand('brightness', { level: latestBrightness.current });
+      brightnessTimer.current = null;
+    }, 50); // Faster response
   };
 
   const handleVolumeChange = (e) => {
     const val = parseInt(e.target.value);
     setVolume(val);
-    sendCommand('volume', { level: val });
+    latestVolume.current = val;
+    
+    if (volumeTimer.current) return;
+    
+    volumeTimer.current = setTimeout(() => {
+      sendCommand('volume', { level: latestVolume.current });
+      volumeTimer.current = null;
+    }, 50); // Faster response
   };
 
   const handleTouchMove = (e) => {
