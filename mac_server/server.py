@@ -15,7 +15,7 @@ import io
 import queue
 import time
 
-# Hardware-level controller using Quartz and DisplayServices
+# Hardware-level controller
 try:
     import objc
     import Quartz
@@ -30,7 +30,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.3.0"
+VERSION = "2.4.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
@@ -55,75 +55,133 @@ def set_mac_brightness(level):
     os.system(f"osascript -e 'tell application \"System Events\" to set brightness of display 1 to {level}' 2>/dev/null")
     return success
 
+# --- Lost Mode Functions ---
+lost_window = None
+
+def show_lost_screen(message):
+    global lost_window
+    if lost_window:
+        try: lost_window.destroy()
+        except: pass
+    
+    def create_window():
+        global lost_window
+        lost_window = tk.Tk()
+        lost_window.attributes('-fullscreen', True)
+        lost_window.attributes('-topmost', True)
+        lost_window.configure(bg='black')
+        
+        lbl = tk.Label(lost_window, text="LOST MACBOOK", font=("Helvetica", 60, "bold"), fg="red", bg="black")
+        lbl.pack(expand=True, pady=(100, 0))
+        
+        msg = tk.Label(lost_window, text=message, font=("Helvetica", 30), fg="white", bg="black", wraplength=800)
+        msg.pack(expand=True)
+        
+        tk.Label(lost_window, text="This Mac is being tracked.", font=("Helvetica", 18), fg="#444", bg="black").pack(side='bottom', pady=50)
+        
+        lost_window.mainloop()
+
+    threading.Thread(target=create_window, daemon=True).start()
+
+@app.route('/lost_info', methods=['GET'])
+def get_lost_info():
+    # Battery
+    battery_raw = subprocess.check_output(["pmset", "-g", "batt"]).decode()
+    percent = "Unknown"
+    if "%" in battery_raw:
+        percent = battery_raw.split("%")[0].split("\t")[-1] + "%"
+    
+    # Simple IP-based Location (Privacy-safe)
+    try:
+        loc_data = requests.get("https://ipapi.co/json/", timeout=5).json()
+        location = f"{loc_data.get('city')}, {loc_data.get('region')}, {loc_data.get('country_name')}"
+    except:
+        location = "Location Unavailable (No Internet)"
+        
+    return jsonify({
+        "battery": percent,
+        "location": location,
+        "ip": get_ip()
+    })
+
+@app.route('/play_noise', methods=['POST'])
+def play_noise():
+    # Play aggressive alert sound
+    os.system("osascript -e 'set volume output volume 100'")
+    os.system("osascript -e 'beep 3'")
+    # Play a louder system sound
+    os.system("afplay /System/Library/Sounds/Sosumi.aiff &")
+    os.system("afplay /System/Library/Sounds/Sosumi.aiff &")
+    return jsonify({"status": "success"})
+
+@app.route('/lost_mode', methods=['POST'])
+def activate_lost_mode():
+    data = request.json
+    msg = data.get('message', 'Please return this device.')
+    show_lost_screen(msg)
+    return jsonify({"status": "success"})
+
+@app.route('/stop_lost', methods=['POST'])
+def stop_lost():
+    global lost_window
+    if lost_window:
+        gui_queue.put('close_lost')
+    return jsonify({"status": "success"})
+
+# --- Existing App Routes ---
 @app.route('/')
-def index():
-    return send_from_directory(app.static_folder, 'index.html')
-
+def index(): return send_from_directory(app.static_folder, 'index.html')
 @app.route('/<path:path>')
-def static_proxy(path):
-    return send_from_directory(app.static_folder, path)
-
+def static_proxy(path): return send_from_directory(app.static_folder, path)
 @app.route('/move', methods=['POST'])
 def move_mouse():
     data = request.json
     pyautogui.moveRel(data.get('dx', 0), data.get('dy', 0))
     return jsonify({"status": "success"})
-
 @app.route('/click', methods=['POST'])
 def click():
     data = request.json
     pyautogui.click(button=data.get('button', 'left'))
     return jsonify({"status": "success"})
-
 @app.route('/scroll', methods=['POST'])
 def scroll():
     data = request.json
     pyautogui.scroll(data.get('amount', 0))
     return jsonify({"status": "success"})
-
 @app.route('/type', methods=['POST'])
 def type_text():
     data = request.json
     pyautogui.write(data.get('text', ''))
     return jsonify({"status": "success"})
-
 @app.route('/key', methods=['POST'])
 def press_key():
     data = request.json
     key = data.get('key', '')
     if key: pyautogui.press(key)
     return jsonify({"status": "success"})
-
 @app.route('/shortcut', methods=['POST'])
 def shortcut():
     data = request.json
     keys = data.get('keys', [])
     if keys: pyautogui.hotkey(*keys)
     return jsonify({"status": "success"})
-
 @app.route('/volume', methods=['POST'])
 def volume():
     data = request.json
     level = data.get('level')
-    if level is not None:
-        os.system(f"osascript -e 'set volume output volume {level}'")
+    if level is not None: os.system(f"osascript -e 'set volume output volume {level}'")
     else:
         action = data.get('action', 'up')
         if action == 'up': os.system("osascript -e 'set volume output volume (output volume of (get volume settings) + 7)'")
         elif action == 'down': os.system("osascript -e 'set volume output volume (output volume of (get volume settings) - 7)'")
         elif action == 'mute': os.system("osascript -e 'set volume output muted not (output muted of (get volume settings))'")
     return jsonify({"status": "success"})
-
 @app.route('/brightness', methods=['POST'])
 def brightness():
     data = request.json
     level = data.get('level')
     if level is not None: set_mac_brightness(float(level))
-    else:
-        action = data.get('action', 'up')
-        pyautogui.press('brightnessup' if action == 'up' else 'brightnessdown')
     return jsonify({"status": "success"})
-
 @app.route('/media', methods=['POST'])
 def media():
     data = request.json
@@ -136,15 +194,12 @@ def media():
             if "success" not in result.stdout: pyautogui.press('space')
         elif action == 'next': os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"document.querySelector(\\\".ytp-next-button\\\")?.click()\"' 2>/dev/null")
         elif action == 'prev': os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"window.history.back()\"' 2>/dev/null")
-    elif target == "spotify":
-        os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
-    elif target == "music":
-        os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
+    elif target == "spotify": os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
+    elif target == "music": os.system(f"osascript -e 'tell application \"Music\" to {action if action != 'play' else 'playpause'}' 2>/dev/null")
     else:
         cmd_key = {'play': 'playpause', 'next': 'nexttrack', 'prev': 'prevtrack'}[action]
         pyautogui.press(cmd_key)
     return jsonify({"status": "success"})
-
 @app.route('/launch', methods=['POST'])
 def launch():
     data = request.json
@@ -153,23 +208,19 @@ def launch():
     elif app_name == 'finder': os.system("open ~")
     elif app_name == 'spotify': os.system("open -a 'Spotify'")
     return jsonify({"status": "success"})
-
 @app.route('/lock', methods=['POST'])
 def lock_mac():
     os.system("pmset displaysleepnow")
     os.system("osascript -e 'tell application \"System Events\" to lock screen' &")
     return jsonify({"status": "success"})
-
 @app.route('/empty_trash', methods=['POST'])
 def empty_trash():
     os.system("osascript -e 'tell application \"Finder\" to empty trash' &")
     return jsonify({"status": "success"})
-
 @app.route('/show_window', methods=['POST'])
 def show_window():
     gui_queue.put('show')
     return jsonify({"status": "success"})
-
 @app.route('/update', methods=['POST'])
 def trigger_update():
     gui_queue.put('update')
@@ -185,10 +236,8 @@ def get_ip():
     return IP
 
 def run_server():
-    try:
-        app.run(host='0.0.0.0', port=5005, threaded=True)
-    except Exception as e:
-        gui_queue.put(f'error:{str(e)}')
+    try: app.run(host='0.0.0.0', port=5005, threaded=True)
+    except Exception as e: gui_queue.put(f'error:{str(e)}')
 
 def update_app():
     try:
@@ -244,17 +293,18 @@ def start_gui():
         gui_queue.put('hide')
 
     def check_queue():
+        global lost_window
         try:
             msg = gui_queue.get_nowait()
             if msg == 'show':
                 root.deiconify()
                 root.lift()
-                root.attributes("-topmost", True)
-                root.attributes("-topmost", False)
-            elif msg == 'hide':
-                root.withdraw()
-            elif msg == 'update':
-                threading.Thread(target=update_app).start()
+            elif msg == 'hide': root.withdraw()
+            elif msg == 'update': threading.Thread(target=update_app).start()
+            elif msg == 'close_lost':
+                if lost_window:
+                    lost_window.destroy()
+                    lost_window = None
             elif msg.startswith('error:'):
                 root.deiconify()
                 messagebox.showerror("Josh S Error", msg.replace('error:', ''))
@@ -289,8 +339,6 @@ def start_gui():
     entry_url.insert(0, url)
     entry_url.config(state='readonly', readonlybackground="#0a0a0a")
     entry_url.pack(pady=5, ipady=10)
-
-    tk.Label(main_frame, text="Type this address into your Samsung's browser", font=("Helvetica", 10), fg="#666666", bg='#000000').pack(pady=5)
 
     btn_frame = tk.Frame(main_frame, bg='#000000')
     btn_frame.pack(side='bottom', pady=20, fill='x')
