@@ -13,7 +13,7 @@ import zipfile
 import shutil
 import io
 
-# Try to load Pro Display Services for hardware-level control
+# Hardware-level controller
 try:
     import objc
     from Foundation import NSBundle
@@ -27,12 +27,11 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.7.0"
+VERSION = "1.7.1"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 def set_mac_brightness(level):
-    """Sets brightness using Pro Display Services (Hardware Level)"""
-    success = False
+    """Deep hardware brightness control for modern Macs"""
     if HAS_OBJC:
         try:
             bundle_path = '/System/Library/PrivateFrameworks/DisplayServices.framework'
@@ -40,17 +39,26 @@ def set_mac_brightness(level):
                 ds_bundle = NSBundle.bundleWithPath_(bundle_path)
                 functions = [('DisplayServicesSetBrightness', b'vIf')]
                 objc.loadBundleFunctions(ds_bundle, globals(), functions)
-                # Try both common display IDs
-                DisplayServicesSetBrightness(0, level)
-                DisplayServicesSetBrightness(1, level)
-                success = True
+                
+                # Try many display IDs to ensure we hit the built-in screen
+                for display_id in range(5):
+                    DisplayServicesSetBrightness(display_id, float(level))
+                return True
         except Exception as e:
-            print(f"Hardware Brightness Error: {e}")
-    
-    if not success:
-        # Fallback to AppleScript
-        os.system(f"osascript -e 'tell application \"System Events\" to set brightness of display 1 to {level}' 2>/dev/null")
-        os.system(f"osascript -e 'tell application \"System Settings\" to reveal anchor \"display\" of pane id \"com.apple.Displays-Settings.extension\"' 2>/dev/null")
+            print(f"Hardware Error: {e}")
+            
+    # Fallback to a different AppleScript method (System Settings automation)
+    script = f'''
+    tell application "System Events"
+        repeat with i from 1 to 5
+            try
+                set brightness of display i to {level}
+            end try
+        end repeat
+    end tell
+    '''
+    os.system(f"osascript -e '{script}' 2>/dev/null")
+    return False
 
 @app.route('/')
 def index():
@@ -113,15 +121,13 @@ def volume():
 @app.route('/brightness', methods=['POST'])
 def brightness():
     data = request.json
-    level = data.get('level') # 0.0 to 1.0
-    
+    level = data.get('level')
     if level is not None:
         set_mac_brightness(float(level))
     else:
+        # Step fallback
         action = data.get('action', 'up')
-        # Incremental fallback
         pyautogui.press('brightnessup' if action == 'up' else 'brightnessdown')
-            
     return jsonify({"status": "success"})
 
 @app.route('/media', methods=['POST'])
@@ -131,18 +137,17 @@ def media():
     target = data.get('target', 'auto')
     
     if target == "chrome" or target == "browser":
-        # Multi-stage Browser Control
         if action == 'play':
-            # Try JS first (No swipe)
-            os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"var v=document.querySelector(\\\"video, audio\\\"); if(v) v.paused ? v.play() : v.pause()\"' 2>/dev/null")
-            # Space fallback
-            pyautogui.press('space')
+            # FIX: Tries JS toggle and ONLY uses spacebar if JS fails. 
+            # This prevents the "double-toggle" (inverted) bug.
+            script = 'tell application "Google Chrome" to tell active tab of window 1 to execute javascript "var v=document.querySelector(\'video, audio\'); if(v) { v.paused ? v.play() : v.pause(); \'success\' } else { \'fail\' }"'
+            result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+            if "success" not in result.stdout:
+                pyautogui.press('space')
         elif action == 'next':
             os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"document.querySelector(\\\".ytp-next-button\\\")?.click()\"' 2>/dev/null")
-            pyautogui.hotkey('shift', 'n')
         elif action == 'prev':
             os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"window.history.back()\"' 2>/dev/null")
-            pyautogui.hotkey('shift', 'p')
             
     elif target == "spotify":
         os.system(f"osascript -e 'tell application \"Spotify\" to {action if action != 'play' else 'playpause'} track' 2>/dev/null")
@@ -223,9 +228,8 @@ def start_gui():
     url = f"http://{ip_addr}:5005"
 
     tk.Label(root, text="Josh S", font=("Arial", 28, "bold"), fg="#ffffff", bg='#121212').pack(pady=15)
-    tk.Label(root, text="Pro Hardware Control Active", font=("Arial", 10), fg="#4CAF50", bg='#121212').pack()
+    tk.Label(root, text="High-Power Mode Active", font=("Arial", 10), fg="#4CAF50", bg='#121212').pack()
     tk.Label(root, text=f"Local URL: {url}", font=("Arial", 10), fg="#888", bg='#121212').pack(pady=5)
-    tk.Label(root, text="Open address on your phone:", font=("Arial", 11), fg="#aaaaaa", bg='#121212').pack(pady=10)
 
     entry_url = tk.Entry(root, font=("Arial", 18), justify='center', width=18, bd=0)
     entry_url.insert(0, url)
