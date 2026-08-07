@@ -19,7 +19,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 @app.route('/')
@@ -85,19 +85,16 @@ def brightness():
     data = request.json
     level = data.get('level') # 0.0 to 1.0
     
+    # Method 1: The 'CoreDisplay' AppleScript (Strongest method for Monterey/Ventura/Sonoma)
     if level is not None:
         os.system(f"osascript -e 'tell application \"System Events\" to set brightness of display 1 to {level}'")
+        # Method 2: Shell command fallback
+        os.system(f"brightness {level} 2>/dev/null")
     else:
         action = data.get('action', 'up')
-        # Get current brightness and increment
-        try:
-            curr = subprocess.check_output(["osascript", "-e", "tell application \"System Events\" to get brightness of display 1"]).decode().strip()
-            new_val = float(curr) + 0.1 if action == 'up' else float(curr) - 0.1
-            new_val = max(0, min(1.0, new_val))
-            os.system(f"osascript -e 'tell application \"System Events\" to set brightness of display 1 to {new_val}'")
-        except:
-            # Fallback to keys if the property method fails
-            pyautogui.press('brightnessup' if action == 'up' else 'brightnessdown')
+        # Triple Fallback
+        os.system(f"osascript -e 'tell application \"System Events\" to key code {'144' if action == 'up' else '145'}'")
+        pyautogui.press('brightnessup' if action == 'up' else 'brightnessdown')
             
     return jsonify({"status": "success"})
 
@@ -108,9 +105,8 @@ def media():
     target = data.get('target', 'auto')
     
     if target == "chrome":
-        # Targeted AppleScript for Chrome using JS for zero-swipe control
         if action == 'play':
-            os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"document.querySelector(\\\"video, audio\\\").paused ? document.querySelector(\\\"video, audio\\\").play() : document.querySelector(\\\"video, audio\\\").pause()\"' 2>/dev/null")
+            os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"var v=document.querySelector(\\\"video, audio\\\"); if(v) v.paused ? v.play() : v.pause()\"' 2>/dev/null")
         elif action == 'next':
             os.system("osascript -e 'tell application \"Google Chrome\" to tell active tab of window 1 to execute javascript \"document.querySelector(\\\".ytp-next-button\\\")?.click()\"' 2>/dev/null")
         elif action == 'prev':
