@@ -12,7 +12,6 @@ app = Flask(__name__, static_folder='static')
 CORS(app)
 pyautogui.FAILSAFE = False
 
-# API Endpoints
 @app.route('/')
 def index():
     return send_from_directory(app.static_folder, 'index.html')
@@ -24,8 +23,7 @@ def static_proxy(path):
 @app.route('/move', methods=['POST'])
 def move_mouse():
     data = request.json
-    dx, dy = data.get('dx', 0), data.get('dy', 0)
-    pyautogui.moveRel(dx, dy)
+    pyautogui.moveRel(data.get('dx', 0), data.get('dy', 0))
     return jsonify({"status": "success"})
 
 @app.route('/click', methods=['POST'])
@@ -74,41 +72,34 @@ def get_ip():
     return IP
 
 def run_server():
-    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+    app.run(host='0.0.0.0', port=5000)
 
-# GUI Setup
 def start_gui():
     root = tk.Tk()
-    root.title("Josh S - Mac Remote")
-    root.geometry("400x250")
-    root.configure(bg='#1e1e1e')
+    root.title("Josh S Remote")
+    root.geometry("400x300")
+    root.configure(bg='#121212')
 
     ip_addr = get_ip()
     url = f"http://{ip_addr}:5000"
 
-    label_title = tk.Label(root, text="Josh S Remote Server", font=("Arial", 18, "bold"), fg="white", bg='#1e1e1e')
-    label_title.pack(pady=20)
+    tk.Label(root, text="Josh S", font=("Arial", 24, "bold"), fg="#ffffff", bg='#121212').pack(pady=20)
+    tk.Label(root, text="Server is Active", font=("Arial", 12), fg="#4CAF50", bg='#121212').pack()
+    
+    tk.Label(root, text="Step 1: Open Chrome on your Samsung\nStep 2: Go to the address below:", 
+             font=("Arial", 10), fg="#aaaaaa", bg='#121212', justify="center").pack(pady=15)
 
-    label_status = tk.Label(root, text="Status: Running ✅", font=("Arial", 12), fg="#4CAF50", bg='#1e1e1e')
-    label_status.pack()
-
-    label_ip = tk.Label(root, text="Enter this on your phone:", font=("Arial", 10), fg="#aaa", bg='#1e1e1e')
-    label_ip.pack(pady=(20, 0))
-
-    entry_url = tk.Entry(root, font=("Arial", 14), justify='center', width=20)
+    entry_url = tk.Entry(root, font=("Arial", 16), justify='center', width=18, bd=0, highlightthickness=0)
     entry_url.insert(0, url)
-    entry_url.config(state='readonly')
+    entry_url.config(state='readonly', readonlybackground="#1e1e1e", fg="#ffffff")
     entry_url.pack(pady=5)
 
     def on_closing():
-        if messagebox.askokcancel("Quit", "Do you want to stop the Josh S Remote?"):
-            os._exit(0)
+        os._exit(0)
 
     root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
 
 if __name__ == '__main__':
-    # Start server in a background thread
     threading.Thread(target=run_server, daemon=True).start()
-    # Start GUI in the main thread
     start_gui()

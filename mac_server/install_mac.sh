@@ -1,26 +1,62 @@
 #!/bin/bash
 
-# Get the directory where this script is located
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$DIR"
+# Define the App Name
+APP_NAME="Josh S"
+APP_DIR="/Applications/$APP_NAME.app"
+CONTENTS="$APP_DIR/Contents"
+MACOS="$CONTENTS/MacOS"
+RESOURCES="$CONTENTS/Resources"
 
-# Create a clickable launcher on the Desktop
-CAT_PATH="$HOME/Desktop/Josh S.command"
+echo "Creating Mac Application: $APP_DIR..."
 
-cat <<EOF > "$CAT_PATH"
+# 1. Create Folder Structure
+sudo mkdir -p "$MACOS"
+sudo mkdir -p "$RESOURCES"
+
+# 2. Get the current source directory
+SOURCE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# 3. Create the executable script
+sudo tee "$MACOS/Josh S" > /dev/null <<EOF
 #!/bin/bash
-cd "$DIR"
-python3 server.py
+cd "$APP_DIR/Contents/Resources"
+/usr/bin/python3 server.py
 EOF
 
-chmod +x "$CAT_PATH"
+sudo chmod +x "$MACOS/Josh S"
 
-echo "--------------------------------------------------------"
-echo "✅ SUCCESS: 'Josh S' launcher created on your Desktop!"
-echo "--------------------------------------------------------"
-echo "Before your first run, make sure to install requirements:"
-echo "pip3 install flask flask-cors pyautogui"
+# 4. Copy the server files into the App bundle
+sudo cp -r "$SOURCE_DIR/server.py" "$RESOURCES/"
+sudo cp -r "$SOURCE_DIR/static" "$RESOURCES/"
+
+# 5. Create Info.plist (Essential for Mac apps)
+sudo tee "$CONTENTS/Info.plist" > /dev/null <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>Josh S</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.josh.remote</string>
+    <key>CFBundleName</key>
+    <string>Josh S</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+</dict>
+</plist>
+EOF
+
+# 6. Set Permissions
+sudo chown -R $(whoami) "$APP_DIR"
+chmod +x "$APP_DIR/Contents/MacOS/Josh S"
+
 echo ""
-echo "And check your Mac Permissions (Accessibility & Screen Recording)"
-echo "for your Terminal app."
+echo "--------------------------------------------------------"
+echo "✅ SUCCESS! 'Josh S' is now in your Applications folder."
+echo "--------------------------------------------------------"
+echo "1. Go to your Applications folder."
+echo "2. Right-click 'Josh S' and select 'Open' (only needed for the first time)."
 echo "--------------------------------------------------------"
