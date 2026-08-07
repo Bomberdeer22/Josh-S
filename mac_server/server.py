@@ -6,7 +6,7 @@ import os
 import socket
 import threading
 import tkinter as tk
-from tkinter import messagebox, font as tkfont, ttk
+from tkinter import messagebox, font as tkfont
 import subprocess
 import requests
 import zipfile
@@ -32,14 +32,13 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.9.0"
+VERSION = "2.9.1"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
-# Detailed connection tracking
-active_connections = {} # {ip: {"name": str, "connected_at": str, "ua": str}}
+active_connections = {} # {ip: {"name": str, "connected_at": str}}
 
-# --- Advanced Location Engine ---
+# --- Location Engine ---
 if HAS_PRO_CONTROLLER:
     class LocationDelegate(CoreLocation.NSObject):
         def initWithManager_(self, parent):
@@ -89,7 +88,7 @@ def get_ip_location():
             lat = r.get('latitude') or r.get('lat')
             lon = r.get('longitude') or r.get('lon')
             city = r.get('city') or 'Unknown City'
-            if lat and lon: return float(lat), float(lon), f"{city} (IP Location)"
+            if lat and lon: return float(lat), float(lon), f"{city} (IP)"
         except: continue
     return 51.5074, -0.1278, "Location Unavailable"
 
@@ -113,23 +112,10 @@ def set_mac_brightness(level):
 @app.route('/register', methods=['POST'])
 def register():
     ip = request.remote_addr
-    ua = request.headers.get('User-Agent', 'Unknown Device')
-    
-    # Identify device name
-    if "Android" in ua: name = "Samsung Device"
-    elif "iPhone" in ua: name = "iPhone"
-    elif "Macintosh" in ua: name = "MacBook"
-    else: name = "Mobile Device"
-    
-    active_connections[ip] = {
-        "name": name,
-        "ip": ip,
-        "connected_at": datetime.now().strftime("%H:%M:%S"),
-        "ua": ua
-    }
-    
-    gui_queue.put(('view', 'connections'))
-    gui_queue.put(('update_list', None))
+    ua = request.headers.get('User-Agent', 'Unknown')
+    name = "Samsung Device" if "Android" in ua else "Mobile Device"
+    active_connections[ip] = {"name": name, "connected_at": datetime.now().strftime("%H:%M:%S")}
+    gui_queue.put('update_view') # Tell GUI to refresh but don't force it to show
     return jsonify({"status": "registered"})
 
 @app.route('/lost_info', methods=['GET'])
@@ -225,10 +211,10 @@ def media():
     return jsonify({"status": "success"})
 @app.route('/launch', methods=['POST'])
 def launch():
-    app_name = request.json.get('app', '')
-    if app_name == 'browser': os.system("open -a 'Google Chrome' || open -a 'Safari'")
-    elif app_name == 'finder': os.system("open ~")
-    elif app_name.lower() == 'spotify': os.system("open -a 'Spotify'")
+    app_n = request.json.get('app', '')
+    if app_n == 'browser': os.system("open -a 'Google Chrome' || open -a 'Safari'")
+    elif app_n == 'finder': os.system("open ~")
+    elif app_n.lower() == 'spotify': os.system("open -a 'Spotify'")
     return jsonify({"status": "success"})
 @app.route('/lock', methods=['POST'])
 def lock_mac():
@@ -279,35 +265,19 @@ def update_app():
         os._exit(0)
     except Exception as e: gui_queue.put(f'error:Update failed: {str(e)}')
 
-def open_settings_location(): os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices'")
-
+# --- GUI ---
 class ModernButton(tk.Frame):
-    def __init__(self, parent, text, command, bg_color, fg_color, font, hover_color=None):
+    def __init__(self, parent, text, command, bg_color, fg_color, font):
         super().__init__(parent, bg=bg_color, padx=10, pady=5)
-        self.bg_color = bg_color
-        self.hover_color = hover_color or self.lighten(bg_color)
         self.command = command
         self.label = tk.Label(self, text=text, fg=fg_color, bg=bg_color, font=font)
         self.label.pack(expand=True, fill='both')
         self.label.bind("<Button-1>", lambda e: self.command())
         self.bind("<Button-1>", lambda e: self.command())
-        self.label.bind("<Enter>", lambda e: self.on_enter())
-        self.label.bind("<Leave>", lambda e: self.on_leave())
 
-    def on_enter(self): self.config(bg=self.hover_color); self.label.config(bg=self.hover_color)
-    def on_leave(self): self.config(bg=self.bg_color); self.label.config(bg=self.bg_color)
-    def lighten(self, c):
-        if c == "#007aff": return "#2691ff"
-        if c == "#222222": return "#333333"
-        return c
-
-# --- Lost Mode Window ---
 lost_window = None
 def show_lost_screen(message):
     global lost_window
-    if lost_window: 
-        try: lost_window.destroy()
-        except: pass
     def create():
         global lost_window
         lost_window = tk.Tk()
@@ -318,112 +288,71 @@ def show_lost_screen(message):
         lost_window.mainloop()
     threading.Thread(target=create, daemon=True).start()
 
-# --- Main GUI ---
-is_visible = True
-
 def start_gui():
     root = tk.Tk()
     root.title(f"Josh S")
-    root.geometry("500x650")
+    root.geometry("450x600")
     root.configure(bg='#000000')
     root.resizable(False, False)
 
-    container = tk.Frame(root, bg="#000000")
-    container.pack(expand=True, fill='both')
+    main_container = tk.Frame(root, bg="#000000", padx=30, pady=30)
+    main_container.pack(expand=True, fill='both')
 
-    frames = {}
+    # Views
+    current_view = "connect" # "connect" or "manage"
 
-    def show_frame(name):
-        frame = frames[name]
-        frame.tkraise()
-
-    connect_frame = tk.Frame(container, bg="#000000", padx=30, pady=30)
-    manage_frame = tk.Frame(container, bg="#000000", padx=30, pady=30)
-
-    for f in (connect_frame, manage_frame):
-        f.grid(row=0, column=0, sticky='nsew')
-        f.grid_propagate(False)
-        f.config(width=500, height=650)
-
-    frames['connect'] = connect_frame
-    frames['connections'] = manage_frame
-
-    # --- Connect View ---
-    tk.Label(connect_frame, text="Josh S", font=("Helvetica", 36, "bold"), fg="#ffffff", bg='#000000').pack()
-    tk.Label(connect_frame, text=f"Remote Control Engine v{VERSION}", font=("Helvetica", 10), fg="#555555", bg='#000000').pack()
-    
-    st_b = tk.Frame(connect_frame, bg='#111111', pady=15, padx=20); st_b.pack(pady=30, fill='x')
-    tk.Label(st_b, text="Awaiting Connection", font=("Helvetica", 16), fg="#007aff", bg='#111111').pack()
-    tk.Label(st_b, text="Open the link below on your phone", font=("Helvetica", 10), fg="#888888", bg='#111111').pack()
-    
-    url = f"http://{get_ip()}:5005"
-    tk.Label(connect_frame, text="YOUR MAC URL", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 5))
-    e_u = tk.Entry(connect_frame, font=("Courier", 22, "bold"), justify='center', bd=0, bg='#0a0a0a', fg="#ffffff")
-    e_u.insert(0, url); e_u.config(state='readonly'); e_u.pack(pady=10, ipady=15, fill='x')
-
-    ModernButton(connect_frame, "View Active Connections", lambda: show_frame('connections'), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=20, fill='x')
-
-    # --- Connections View ---
-    tk.Label(manage_frame, text="Connected Devices", font=("Helvetica", 28, "bold"), fg="#ffffff", bg='#000000').pack(pady=(0, 20))
-    
-    list_container = tk.Frame(manage_frame, bg="#000000")
-    list_container.pack(expand=True, fill='both')
-
-    def refresh_connection_list():
-        for widget in list_container.winfo_children():
-            widget.destroy()
+    def render_view():
+        for widget in main_container.winfo_children(): widget.destroy()
         
-        if not active_connections:
-            tk.Label(list_container, text="No devices connected", font=("Helvetica", 14), fg="#444", bg="#000000").pack(pady=100)
+        if current_view == "connect":
+            tk.Label(main_container, text="Josh S", font=("Helvetica", 36, "bold"), fg="#ffffff", bg='#000000').pack()
+            tk.Label(main_container, text=f"Remote Control Engine v{VERSION}", font=("Helvetica", 10), fg="#555555", bg='#000000').pack()
+            
+            st_b = tk.Frame(main_container, bg='#111111', pady=15, padx=20); st_b.pack(pady=30, fill='x')
+            tk.Label(st_b, text="Awaiting Connection", font=("Helvetica", 14), fg="#007aff", bg='#111111').pack()
+            
+            url = f"http://{get_ip()}:5005"
+            tk.Label(main_container, text="YOUR MAC URL", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 5))
+            e_u = tk.Entry(main_container, font=("Courier", 22, "bold"), justify='center', bd=0, bg='#0a0a0a', fg="#ffffff")
+            e_u.insert(0, url); e_u.config(state='readonly'); e_u.pack(pady=10, ipady=15, fill='x')
+            
+            if active_connections:
+                ModernButton(main_container, "View Connected Devices", lambda: set_view("manage"), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=20, fill='x')
         else:
+            tk.Label(main_container, text="Connected Devices", font=("Helvetica", 28, "bold"), fg="#ffffff", bg='#000000').pack(pady=(0, 20))
             for ip, info in active_connections.items():
-                card = tk.Frame(list_container, bg="#111111", pady=15, padx=15)
-                card.pack(fill='x', pady=5)
-                
-                name_lbl = tk.Label(card, text=info['name'], font=("Helvetica", 16, "bold"), fg="#ffffff", bg="#111111")
-                name_lbl.pack(side='top', anchor='w')
-                
-                details = f"IP: {ip}  •  Connected: {info['connected_at']}"
-                tk.Label(card, text=details, font=("Helvetica", 10), fg="#888888", bg="#111111").pack(side='top', anchor='w', pady=2)
-                
-                def revoke(target_ip=ip):
-                    if target_ip in active_connections:
-                        del active_connections[target_ip]
-                    refresh_connection_list()
+                card = tk.Frame(main_container, bg="#111111", pady=15, padx=15); card.pack(fill='x', pady=5)
+                tk.Label(card, text=info['name'], font=("Helvetica", 16, "bold"), fg="#ffffff", bg="#111111").pack(anchor='w')
+                tk.Label(card, text=f"IP: {ip}  •  Joined: {info['connected_at']}", font=("Helvetica", 10), fg="#888888", bg="#111111").pack(anchor='w')
+            
+            ModernButton(main_container, "Add Another Device", lambda: set_view("connect"), "#007aff", "white", ("Helvetica", 12, "bold")).pack(pady=20, fill='x')
 
-                ModernButton(card, "Revoke Access", revoke, "#331111", "#ff3b30", ("Helvetica", 10, "bold")).pack(side='right', pady=5)
+        # Footer
+        footer = tk.Frame(main_container, bg='#000000'); footer.pack(side='bottom', fill='x')
+        ModernButton(footer, "Update", lambda: threading.Thread(target=update_app).start(), "#1a1a1a", "#888888", ("Helvetica", 10)).pack(side='left', expand=True, padx=2)
+        ModernButton(footer, "Hide", lambda: root.withdraw(), "#1a1a1a", "#888888", ("Helvetica", 10)).pack(side='left', expand=True, padx=2)
 
-    ModernButton(manage_frame, "Add New Device", lambda: show_frame('connect'), "#007aff", "white", ("Helvetica", 12, "bold")).pack(pady=10, fill='x')
+    def set_view(v):
+        nonlocal current_view
+        current_view = v
+        render_view()
 
-    # Bottom Global Actions
-    def add_footer(parent):
-        f = tk.Frame(parent, bg='#000000'); f.pack(side='bottom', fill='x', pady=10)
-        ModernButton(f, "Check for Updates", lambda: threading.Thread(target=update_app).start(), "#1a1a1a", "#888888", ("Helvetica", 11)).pack(side='left', expand=True, fill='x', padx=5)
-        ModernButton(f, "Hide Window", lambda: gui_queue.put('hide'), "#1a1a1a", "#888888", ("Helvetica", 11)).pack(side='left', expand=True, fill='x', padx=5)
-
-    add_footer(connect_frame)
-    add_footer(manage_frame)
-
-    show_frame('connect')
+    render_view()
 
     def check_queue():
-        global lost_window, is_visible
+        global lost_window
         try:
             msg = gui_queue.get_nowait()
             if msg == 'toggle':
-                if is_visible: root.withdraw(); is_visible = False
-                else: root.deiconify(); root.lift(); is_visible = True
-            elif msg == 'hide': root.withdraw(); is_visible = False
+                if root.state() == 'normal' and root.winfo_viewable(): root.withdraw()
+                else: root.deiconify(); root.lift()
+            elif msg == 'hide': root.withdraw()
+            elif msg == 'update_view': render_view()
             elif msg == 'update': threading.Thread(target=update_app).start()
             elif msg == 'close_lost':
                 if lost_window: lost_window.destroy(); lost_window = None
-            elif isinstance(msg, tuple) and msg[0] == 'view':
-                show_frame(msg[1])
-                root.deiconify(); root.lift(); is_visible = True
-            elif msg == 'update_list':
-                refresh_connection_list()
             elif msg.startswith('error:'):
-                root.deiconify(); is_visible = True; messagebox.showerror("Josh S Error", msg.replace('error:', ''))
+                root.deiconify(); messagebox.showerror("Josh S Error", msg.replace('error:', ''))
         except queue.Empty: pass
         root.after(100, check_queue)
 
