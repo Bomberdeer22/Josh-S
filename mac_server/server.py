@@ -20,7 +20,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.3.2"
+VERSION = "1.3.3"
 # Note: This URL will only work if the repository is PUBLIC on GitHub.
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
@@ -164,6 +164,13 @@ def update_app():
         shutil.rmtree(temp_dir)
         
         messagebox.showinfo("Update Complete", "Josh S has been updated! The app will now restart.")
+        
+        # Relaunch the app
+        try:
+            subprocess.Popen(["open", "-n", "/Applications/Josh S.app"])
+        except:
+            pass
+            
         os._exit(0)
     except Exception as e:
         messagebox.showerror("Update Failed", f"Could not update: {str(e)}")
