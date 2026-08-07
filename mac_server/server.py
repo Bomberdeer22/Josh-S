@@ -72,24 +72,25 @@ def get_ip():
     return IP
 
 def run_server():
-    app.run(host='0.0.0.0', port=5000)
+    # Changed to 5005 to avoid AirPlay conflict on Port 5000
+    app.run(host='0.0.0.0', port=5005)
 
 def start_gui():
     root = tk.Tk()
     root.title("Josh S Remote")
-    root.geometry("400x300")
+    root.geometry("400x320")
     root.configure(bg='#121212')
 
     ip_addr = get_ip()
-    url = f"http://{ip_addr}:5000"
+    url = f"http://{ip_addr}:5005"
 
-    tk.Label(root, text="Josh S", font=("Arial", 24, "bold"), fg="#ffffff", bg='#121212').pack(pady=20)
-    tk.Label(root, text="Server is Active", font=("Arial", 12), fg="#4CAF50", bg='#121212').pack()
+    tk.Label(root, text="Josh S", font=("Arial", 28, "bold"), fg="#ffffff", bg='#121212').pack(pady=20)
+    tk.Label(root, text="Server Status: ONLINE", font=("Arial", 12, "bold"), fg="#4CAF50", bg='#121212').pack()
     
-    tk.Label(root, text="Step 1: Open Chrome on your Samsung\nStep 2: Go to the address below:", 
-             font=("Arial", 10), fg="#aaaaaa", bg='#121212', justify="center").pack(pady=15)
+    tk.Label(root, text="Type this exact address into your\nSamsung Phone's Browser:", 
+             font=("Arial", 11), fg="#aaaaaa", bg='#121212', justify="center").pack(pady=15)
 
-    entry_url = tk.Entry(root, font=("Arial", 16), justify='center', width=18, bd=0, highlightthickness=0)
+    entry_url = tk.Entry(root, font=("Arial", 18), justify='center', width=18, bd=0, highlightthickness=0)
     entry_url.insert(0, url)
     entry_url.config(state='readonly', readonlybackground="#1e1e1e", fg="#ffffff")
     entry_url.pack(pady=5)
