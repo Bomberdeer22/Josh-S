@@ -28,44 +28,44 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.8.0"
+VERSION = "1.9.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 def set_mac_brightness(level):
-    """Ultimate hardware brightness control"""
+    """Pro-grade hardware brightness probe"""
     level = float(level)
     success = False
     
     if HAS_PRO_CONTROLLER:
         try:
-            # Method 1: Use Quartz to get the Main Display ID
-            main_display = Quartz.CGMainDisplayID()
+            # 1. Get the real Main Display ID
+            main_id = Quartz.CGMainDisplayID()
             
-            # Method 2: Load the Private DisplayServices framework
+            # 2. Load the DisplayServices framework
             bundle_path = '/System/Library/PrivateFrameworks/DisplayServices.framework'
             if os.path.exists(bundle_path):
                 ds_bundle = NSBundle.bundleWithPath_(bundle_path)
                 functions = [('DisplayServicesSetBrightness', b'vIf')]
                 objc.loadBundleFunctions(ds_bundle, globals(), functions)
                 
-                # Apply to the main display and some common fallbacks
-                DisplayServicesSetBrightness(main_display, level)
-                DisplayServicesSetBrightness(0, level)
-                DisplayServicesSetBrightness(1, level)
-                success = True
+                # 3. Aggressive Multi-ID Probe
+                # We try the main ID, plus 0-4 just in case
+                ids_to_try = {main_id, 0, 1, 2, 3}
+                for d_id in ids_to_try:
+                    try:
+                        DisplayServicesSetBrightness(d_id, level)
+                        success = True
+                    except:
+                        pass
         except Exception as e:
-            print(f"Hardware Engine Error: {e}")
+            print(f"Hardware Probe Error: {e}")
             
-    if not success:
-        # Method 3: The 'CoreDisplay' AppleScript fallback
-        script = f'tell application "System Events" to set brightness of display 1 to {level}'
-        os.system(f"osascript -e '{script}' 2>/dev/null")
-        
-        # Method 4: Key code fallback (Last resort)
-        if level > 0.5:
-            os.system("osascript -e 'tell application \"System Events\" to key code 144'")
-        else:
-            os.system("osascript -e 'tell application \"System Events\" to key code 145'")
+    # Method 2: System Events Fallback (Requires Accessibility)
+    script = f'tell application "System Events" to set brightness of display 1 to {level}'
+    os.system(f"osascript -e '{script}' 2>/dev/null")
+    
+    # Method 3: Shell 'brightness' tool fallback (if user has it)
+    os.system(f"brightness {level} 2>/dev/null")
             
     return success
 
@@ -134,7 +134,7 @@ def brightness():
     if level is not None:
         set_mac_brightness(float(level))
     else:
-        # Tap fallback
+        # Physical key fallback
         action = data.get('action', 'up')
         pyautogui.press('brightnessup' if action == 'up' else 'brightnessdown')
     return jsonify({"status": "success"})
@@ -146,8 +146,8 @@ def media():
     target = data.get('target', 'auto')
     
     if target == "chrome" or target == "browser":
-        # Strategy: Use JS to toggle without moving the screen
         if action == 'play':
+            # Single-Signal Toggle (Prevents Inverted Bug)
             script = 'tell application "Google Chrome" to tell active tab of window 1 to execute javascript "var v=document.querySelector(\'video, audio\'); if(v) { v.paused ? v.play() : v.pause(); \'success\' } else { \'fail\' }"'
             result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
             if "success" not in result.stdout:
@@ -226,10 +226,13 @@ def update_app():
     except Exception as e:
         messagebox.showerror("Update Failed", str(e))
 
+def open_settings():
+    os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'")
+
 def start_gui():
     root = tk.Tk()
     root.title(f"Josh S v{VERSION}")
-    root.geometry("400x420")
+    root.geometry("400x480")
     root.configure(bg='#121212')
 
     ip_addr = get_ip()
@@ -237,21 +240,25 @@ def start_gui():
 
     tk.Label(root, text="Josh S", font=("Arial", 28, "bold"), fg="#ffffff", bg='#121212').pack(pady=15)
     
-    status_text = "Pro Controller: Active ✅" if HAS_PRO_CONTROLLER else "Standard Controller Active"
-    tk.Label(root, text=status_text, font=("Arial", 10), fg="#4CAF50", bg='#121212').pack()
+    status_color = "#4CAF50" if HAS_PRO_CONTROLLER else "#f44336"
+    status_msg = "Hardware Probe: Active ✅" if HAS_PRO_CONTROLLER else "Hardware Probe: Failed ❌"
+    tk.Label(root, text=status_msg, font=("Arial", 10), fg=status_color, bg='#121212').pack()
     
     tk.Label(root, text=f"Local URL: {url}", font=("Arial", 10), fg="#888", bg='#121212').pack(pady=5)
-    tk.Label(root, text="Connect your Samsung phone to this address.", font=("Arial", 11), fg="#aaaaaa", bg='#121212').pack(pady=10)
 
+    tk.Label(root, text="Step 1: Move slider on phone\nStep 2: If nothing happens, click below:", 
+             font=("Arial", 11), fg="#aaaaaa", bg='#121212', justify="center").pack(pady=15)
+
+    tk.Button(root, text="Fix Permissions", command=open_settings, bg="#444", fg="white", font=("Arial", 10), padx=20).pack(pady=5)
+
+    tk.Button(root, text="Check for Updates", command=lambda: threading.Thread(target=update_app).start(),
+                           bg="#333", fg="white", font=("Arial", 10), padx=10, pady=5).pack(pady=20)
+    
     entry_url = tk.Entry(root, font=("Arial", 18), justify='center', width=18, bd=0)
     entry_url.insert(0, url)
     entry_url.config(state='readonly', readonlybackground="#1e1e1e", fg="#ffffff")
     entry_url.pack(pady=5)
 
-    btn_update = tk.Button(root, text="Check for Updates", command=lambda: threading.Thread(target=update_app).start(),
-                           bg="#333", fg="white", font=("Arial", 10), padx=10, pady=5)
-    btn_update.pack(pady=20)
-    
     def on_closing(): os._exit(0)
     root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
