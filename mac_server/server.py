@@ -6,7 +6,7 @@ import os
 import socket
 import threading
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, font as tkfont
 import subprocess
 import requests
 import zipfile
@@ -28,11 +28,11 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.0.1"
+VERSION = "2.1.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 def set_mac_brightness(level):
-    """Pro-grade hardware brightness probe"""
+    """Ultimate hardware brightness control"""
     level = float(level)
     success = False
     
@@ -104,8 +104,7 @@ def shortcut():
 @app.route('/volume', methods=['POST'])
 def volume():
     data = request.json
-    level = data.get('level') # 0 to 100
-    
+    level = data.get('level')
     if level is not None:
         os.system(f"osascript -e 'set volume output volume {level}'")
     else:
@@ -208,23 +207,63 @@ def open_settings():
 
 def start_gui():
     root = tk.Tk()
-    root.title(f"Josh S v{VERSION}")
-    root.geometry("400x480")
-    root.configure(bg='#121212')
+    root.title(f"Josh S")
+    root.geometry("450x550")
+    root.configure(bg='#000000')
+    root.resizable(False, False)
+
+    # Modern Fonts
+    title_font = tkfont.Font(family="Helvetica", size=32, weight="bold")
+    subtitle_font = tkfont.Font(family="Helvetica", size=14)
+    label_font = tkfont.Font(family="Helvetica", size=12)
+    url_font = tkfont.Font(family="Courier", size=20, weight="bold")
+
+    # Main Container
+    main_frame = tk.Frame(root, bg='#000000', padx=30, pady=30)
+    main_frame.pack(expand=True, fill='both')
+
+    # Title
+    tk.Label(main_frame, text="Josh S", font=title_font, fg="#ffffff", bg='#000000').pack(pady=(0, 5))
+    tk.Label(main_frame, text=f"Version {VERSION}", font=("Helvetica", 10), fg="#555555", bg='#000000').pack()
+
+    # Status Badge
+    status_frame = tk.Frame(main_frame, bg='#1a1a1a', pady=10, padx=20)
+    status_frame.pack(pady=20, fill='x')
+    
+    status_color = "#4CAF50" if HAS_PRO_CONTROLLER else "#f44336"
+    status_msg = "Pro Engine Active" if HAS_PRO_CONTROLLER else "Standard Mode"
+    
+    tk.Label(status_frame, text=status_msg, font=subtitle_font, fg=status_color, bg='#1a1a1a').pack()
+    tk.Label(status_frame, text="Server is Online ✅", font=label_font, fg="#888888", bg='#1a1a1a').pack()
+
+    # URL Section
     ip_addr = get_ip()
     url = f"http://{ip_addr}:5005"
-    tk.Label(root, text="Josh S", font=("Arial", 28, "bold"), fg="#ffffff", bg='#121212').pack(pady=15)
-    status_color = "#4CAF50" if HAS_PRO_CONTROLLER else "#f44336"
-    status_msg = "Pro Controller: Active ✅" if HAS_PRO_CONTROLLER else "Standard Controller Active"
-    tk.Label(root, text=status_msg, font=("Arial", 10), fg=status_color, bg='#121212').pack()
-    tk.Label(root, text=f"Local URL: {url}", font=("Arial", 10), fg="#888", bg='#121212').pack(pady=5)
-    tk.Label(root, text="Step 1: Move sliders on phone\nStep 2: If nothing happens, click below:", font=("Arial", 11), fg="#aaaaaa", bg='#121212', justify="center").pack(pady=15)
-    tk.Button(root, text="Fix Permissions", command=open_settings, bg="#444", fg="white", font=("Arial", 10), padx=20).pack(pady=5)
-    tk.Button(root, text="Check for Updates", command=lambda: threading.Thread(target=update_app).start(), bg="#333", fg="white", font=("Arial", 10), padx=10, pady=5).pack(pady=20)
-    entry_url = tk.Entry(root, font=("Arial", 18), justify='center', width=18, bd=0)
+    
+    tk.Label(main_frame, text="CONNECT YOUR PHONE", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 10))
+    
+    entry_url = tk.Entry(main_frame, font=url_font, justify='center', width=18, bd=0, highlightthickness=2, highlightbackground="#333333", bg='#111111', fg="#ffffff", insertbackground="white")
     entry_url.insert(0, url)
-    entry_url.config(state='readonly', readonlybackground="#1e1e1e", fg="#ffffff")
-    entry_url.pack(pady=5)
+    entry_url.config(state='readonly', readonlybackground="#111111")
+    entry_url.pack(pady=5, ipady=10)
+
+    tk.Label(main_frame, text="Type this address into your Samsung's browser", font=("Helvetica", 10), fg="#666666", bg='#000000').pack(pady=5)
+
+    # Action Buttons
+    btn_frame = tk.Frame(main_frame, bg='#000000')
+    btn_frame.pack(side='bottom', pady=20, fill='x')
+
+    def style_btn(btn):
+        btn.config(relief='flat', bd=0, highlightthickness=0, pady=10, cursor="hand2")
+
+    update_btn = tk.Button(btn_frame, text="Check for Updates", command=lambda: threading.Thread(target=update_app).start(), bg="#007aff", fg="white", font=("Helvetica", 12, "bold"))
+    style_btn(update_btn)
+    update_btn.pack(side='top', fill='x', pady=5)
+
+    perm_btn = tk.Button(btn_frame, text="Fix Permissions", command=open_settings, bg="#222222", fg="#888888", font=("Helvetica", 11))
+    style_btn(perm_btn)
+    perm_btn.pack(side='top', fill='x', pady=5)
+
     def on_closing(): os._exit(0)
     root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
