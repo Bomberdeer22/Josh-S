@@ -31,7 +31,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.7.2"
+VERSION = "2.7.3"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
@@ -79,22 +79,16 @@ else:
     loc_manager = None
 
 def get_ip_location():
-    """Robust IP Geolocation Fallback"""
-    providers = [
-        "https://ipwho.is/",
-        "https://ipapi.co/json/",
-        "http://ip-api.com/json/"
-    ]
+    providers = ["https://ipwho.is/", "https://ipapi.co/json/", "http://ip-api.com/json/"]
     for url in providers:
         try:
             r = requests.get(url, timeout=3).json()
             lat = r.get('latitude') or r.get('lat')
             lon = r.get('longitude') or r.get('lon')
             city = r.get('city') or 'Unknown City'
-            if lat and lon:
-                return float(lat), float(lon), f"{city} (IP Location)"
+            if lat and lon: return float(lat), float(lon), f"{city} (IP Location)"
         except: continue
-    return 51.5074, -0.1278, "Location Unavailable (Defaulting to London)"
+    return 51.5074, -0.1278, "Location Unavailable"
 
 def set_mac_brightness(level):
     level = float(level)
@@ -282,29 +276,47 @@ class ModernButton(tk.Frame):
         self.label.bind("<Button-1>", lambda e: self.command())
         self.bind("<Button-1>", lambda e: self.command())
 
+# --- Global Window State ---
+is_visible = True
+
 def start_gui():
     root = tk.Tk()
     root.title(f"Josh S")
     root.geometry("450x580")
     root.configure(bg='#000000')
     root.resizable(False, False)
-    def auto_hide(): time.sleep(3); gui_queue.put('hide')
+
+    def auto_hide():
+        global is_visible
+        time.sleep(3)
+        if is_visible: # Only hide if user hasn't toggled it already
+            gui_queue.put('hide')
+
     def check_queue():
-        global lost_window
+        global lost_window, is_visible
         try:
             msg = gui_queue.get_nowait()
             if msg == 'toggle':
-                if root.state() == 'normal': root.withdraw()
-                else: root.deiconify(); root.lift()
-            elif msg == 'show': root.deiconify(); root.lift()
-            elif msg == 'hide': root.withdraw()
+                if is_visible:
+                    root.withdraw()
+                    is_visible = False
+                else:
+                    root.deiconify()
+                    root.lift()
+                    root.attributes("-topmost", True)
+                    root.attributes("-topmost", False)
+                    is_visible = True
+            elif msg == 'hide':
+                root.withdraw()
+                is_visible = False
             elif msg == 'update': threading.Thread(target=update_app).start()
             elif msg == 'close_lost':
                 if lost_window: lost_window.destroy(); lost_window = None
             elif msg.startswith('error:'):
-                root.deiconify(); messagebox.showerror("Josh S Error", msg.replace('error:', ''))
+                root.deiconify(); is_visible = True; messagebox.showerror("Josh S Error", msg.replace('error:', ''))
         except queue.Empty: pass
         root.after(100, check_queue)
+
     root.after(100, check_queue)
     threading.Thread(target=auto_hide, daemon=True).start()
 
@@ -314,14 +326,23 @@ def start_gui():
     st_b = tk.Frame(main_f, bg='#111111', pady=10, padx=20); st_b.pack(pady=20, fill='x')
     tk.Label(st_b, text="Tracker Active", font=("Helvetica", 14), fg="#4CAF50", bg='#111111').pack()
     tk.Label(st_b, text="Dual-Engine Location Ready", font=("Helvetica", 10), fg="#888888", bg='#111111').pack()
+    
     url = f"http://{get_ip()}:5005"
     tk.Label(main_f, text="CONNECT YOUR PHONE", font=("Helvetica", 10, "bold"), fg="#007aff", bg='#000000').pack(pady=(20, 10))
     e_u = tk.Entry(main_f, font=("Courier", 20, "bold"), justify='center', bd=0, bg='#0a0a0a', fg="#ffffff")
     e_u.insert(0, url); e_u.config(state='readonly'); e_u.pack(pady=5, ipady=10)
+    
     btn_f = tk.Frame(main_f, bg='#000000'); btn_f.pack(side='bottom', pady=10, fill='x')
+    
+    def manual_hide():
+        global is_visible
+        root.withdraw()
+        is_visible = False
+
     ModernButton(btn_f, "Check for Updates", lambda: threading.Thread(target=update_app).start(), "#007aff", "white", ("Helvetica", 12, "bold")).pack(side='top', fill='x', pady=5)
     ModernButton(btn_f, "Fix Location Permission", open_settings_location, "#222222", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
-    ModernButton(btn_f, "Hide Window", lambda: root.withdraw(), "#333333", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
+    ModernButton(btn_f, "Hide Window", manual_hide, "#333333", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
+    
     root.mainloop()
 
 if __name__ == '__main__':
