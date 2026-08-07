@@ -10,7 +10,9 @@ from tkinter import messagebox
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
+# Disable pyautogui fail-safe and pause for speed
 pyautogui.FAILSAFE = False
+pyautogui.PAUSE = 0
 
 @app.route('/')
 def index():

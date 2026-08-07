@@ -5,11 +5,30 @@ function App() {
   const [ip, setIp] = useState(window.location.hostname || '');
   const [status, setStatus] = useState('Disconnected');
   const [text, setText] = useState('');
-  const touchpadRef = useRef(null);
   const lastPos = useRef({ x: 0, y: 0 });
+  
+  // Buffering for smoother movement
+  const moveBuffer = useRef({ dx: 0, dy: 0 });
+  const scrollBuffer = useRef(0);
+  const isMoving = useRef(false);
 
   useEffect(() => {
     localStorage.setItem('mac_ip', ip);
+  }, [ip]);
+
+  // Movement loop - sends updates every 30ms if there's movement
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (moveBuffer.current.dx !== 0 || moveBuffer.current.dy !== 0) {
+        sendCommand('move', { dx: moveBuffer.current.dx, dy: moveBuffer.current.dy });
+        moveBuffer.current = { dx: 0, dy: 0 };
+      }
+      if (scrollBuffer.current !== 0) {
+        sendCommand('scroll', { amount: scrollBuffer.current });
+        scrollBuffer.current = 0;
+      }
+    }, 30);
+    return () => clearInterval(interval);
   }, [ip]);
 
   const sendCommand = async (endpoint, data) => {
@@ -31,13 +50,18 @@ function App() {
 
   const handleTouchMove = (e) => {
     const touch = e.touches[0];
-    const dx = (touch.clientX - lastPos.current.x) * 2;
-    const dy = (touch.clientY - lastPos.current.y) * 2;
-    
     if (lastPos.current.x !== 0) {
-      sendCommand('move', { dx, dy });
+      moveBuffer.current.dx += (touch.clientX - lastPos.current.x) * 2;
+      moveBuffer.current.dy += (touch.clientY - lastPos.current.y) * 2;
     }
-    
+    lastPos.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleScrollMove = (e) => {
+    const touch = e.touches[0];
+    if (lastPos.current.y !== 0) {
+        scrollBuffer.current += (lastPos.current.y - touch.clientY) * 5;
+    }
     lastPos.current = { x: touch.clientX, y: touch.clientY };
   };
 
@@ -64,7 +88,7 @@ function App() {
         <h1>Josh S Remote</h1>
         <div style={styles.statusLine}>
           <input 
-            placeholder="Mac IP (e.g. 192.168.1.5)" 
+            placeholder="Mac IP" 
             value={ip} 
             onChange={(e) => setIp(e.target.value)}
             style={styles.input}
@@ -86,14 +110,7 @@ function App() {
           </div>
           <div 
             style={styles.scrollbar}
-            onTouchMove={(e) => {
-                const touch = e.touches[0];
-                const dy = (touch.clientY - lastPos.current.y);
-                if (lastPos.current.y !== 0) {
-                    sendCommand('scroll', { amount: -dy * 5 });
-                }
-                lastPos.current = { x: touch.clientX, y: touch.clientY };
-            }}
+            onTouchMove={handleScrollMove}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
