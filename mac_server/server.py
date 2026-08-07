@@ -20,7 +20,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.3"
+VERSION = "1.3.1"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 @app.route('/')
@@ -30,10 +30,6 @@ def index():
 @app.route('/<path:path>')
 def static_proxy(path):
     return send_from_directory(app.static_folder, path)
-
-# ... (Existing API endpoints: move, click, scroll, type, key, shortcut, volume, brightness, media, launch, lock)
-# I will keep the existing logic and just add the update logic below for brevity in the tool call, 
-# but in the actual file, I'll provide the full code.
 
 @app.route('/move', methods=['POST'])
 def move_mouse():
@@ -138,32 +134,25 @@ def update_app():
         r = requests.get(REPO_URL)
         z = zipfile.ZipFile(io.BytesIO(r.content))
         
-        # Determine the current app path
-        # Assuming we are running inside /Applications/Josh S.app/Contents/Resources
         base_path = os.path.dirname(os.path.abspath(__file__))
-        
-        # Extract to a temp folder
         temp_dir = os.path.join(base_path, "temp_update")
         if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
         os.makedirs(temp_dir)
         z.extractall(temp_dir)
         
-        # The zip contains a folder like Josh-S-arena-xxx
         root_folder = os.listdir(temp_dir)[0]
         new_server_dir = os.path.join(temp_dir, root_folder, "mac_server")
         
-        # Copy files over (server.py and static/)
         shutil.copy2(os.path.join(new_server_dir, "server.py"), os.path.join(base_path, "server.py"))
         
         static_dest = os.path.join(base_path, "static")
         if os.path.exists(static_dest): shutil.rmtree(static_dest)
         shutil.copytree(os.path.join(new_server_dir, "static"), static_dest)
         
-        # Cleanup
         shutil.rmtree(temp_dir)
         
         messagebox.showinfo("Update Complete", "Josh S has been updated! The app will now restart.")
-        os._exit(0) # Restarting handled by macOS launch services or manual relaunch
+        os._exit(0)
     except Exception as e:
         messagebox.showerror("Update Failed", f"Could not update: {str(e)}")
 

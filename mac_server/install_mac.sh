@@ -10,41 +10,33 @@ echo "--------------------------------------------------------"
 echo "🛠  Installing Josh S for Mac..."
 echo "--------------------------------------------------------"
 
-# 1. Find the correct Python
 PYTHON_PATH=$(which python3)
 if [ -z "$PYTHON_PATH" ]; then
-    echo "❌ ERROR: Python3 not found. Please install it from python.org"
+    echo "❌ ERROR: Python3 not found."
     exit 1
 fi
 
-# 2. Force install dependencies for this specific Python
-echo "📦 Installing required libraries (Flask, PyAutoGUI, etc.)..."
-"$PYTHON_PATH" -m pip install flask flask-cors pyautogui pyobjc-core pyobjc --quiet
+echo "📦 Installing required libraries..."
+# Fixed: urllib3<2.0.0 for older OpenSSL compatibility
+"$PYTHON_PATH" -m pip install flask flask-cors pyautogui pyobjc-core pyobjc requests "urllib3<2.0.0" --quiet
 
-# 3. Create Folder Structure
 sudo mkdir -p "$MACOS"
 sudo mkdir -p "$RESOURCES"
 
 SOURCE_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# 4. Create the executable script with better error handling
 sudo tee "$MACOS/Josh S" > /dev/null <<EOF
 #!/bin/bash
-# Log errors to the desktop
 LOG_FILE="\$HOME/Desktop/josh_s_error.log"
 exec 2> "\$LOG_FILE"
-
 cd "$APP_DIR/Contents/Resources"
 "$PYTHON_PATH" server.py
 EOF
 
 sudo chmod +x "$MACOS/Josh S"
-
-# 5. Copy files
 sudo cp -r "$SOURCE_DIR/server.py" "$RESOURCES/"
 sudo cp -r "$SOURCE_DIR/static" "$RESOURCES/"
 
-# 6. Create Info.plist
 sudo tee "$CONTENTS/Info.plist" > /dev/null <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -59,16 +51,10 @@ sudo tee "$CONTENTS/Info.plist" > /dev/null <<EOF
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.2</string>
+    <string>1.3.1</string>
 </dict>
 </plist>
 EOF
 
 sudo chown -R $(whoami) "$APP_DIR"
-
-echo ""
-echo "--------------------------------------------------------"
-echo "✅ SUCCESS! Josh S is now ready in Applications."
-echo "--------------------------------------------------------"
-echo "Open your Applications folder and double-click 'Josh S'."
-echo "--------------------------------------------------------"
+echo "✅ Done! Josh S is now ready."
