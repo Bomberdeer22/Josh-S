@@ -15,6 +15,7 @@ import io
 import queue
 import time
 from datetime import datetime
+import json
 
 # Advanced Mac Controllers
 try:
@@ -32,19 +33,20 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "3.0.2"
+VERSION = "3.1.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
 active_connections = {} 
 activities = []
+messages = [] # Global message board for device communication
 
 def add_activity(device_name, action, icon='sync'):
     activities.insert(0, {
         "id": str(time.time()),
         "deviceName": device_name,
         "action": action,
-        "time": "Just now",
+        "time": datetime.now().strftime("%H:%M:%S"),
         "icon": icon
     })
     if len(activities) > 20: activities.pop()
@@ -98,10 +100,10 @@ def get_ip_location():
             r = requests.get(url, timeout=3).json()
             lat = r.get('latitude') or r.get('lat')
             lon = r.get('longitude') or r.get('lon')
-            city = r.get('city') or 'Unknown City'
+            city = r.get('city') or 'Unknown'
             if lat and lon: return float(lat), float(lon), f"{city} (IP)"
         except: continue
-    return 51.5074, -0.1278, "Location Unavailable"
+    return 51.5074, -0.1278, "Unknown"
 
 def set_mac_brightness(level):
     level = float(level)
@@ -136,23 +138,83 @@ def admin_info():
     if "%" in battery_raw:
         try: batt_val = int(battery_raw.split("%")[0].split("\t")[-1])
         except: pass
-    host = {"id": "host", "name": "My MacBook", "type": "macbook", "model": "MacBook Pro", "os": "macOS", "battery": batt_val, "storage": {"used": 450, "total": 1000}, "status": "connected", "lastSeen": "Now", "ip": get_ip()}
+    
+    host = {
+        "id": "host",
+        "name": "My MacBook",
+        "type": "macbook",
+        "model": "MacBook Pro",
+        "os": "macOS",
+        "battery": batt_val,
+        "storage": {"used": 450, "total": 1000},
+        "status": "connected",
+        "lastSeen": "Now",
+        "ip": get_ip()
+    }
+    
     devices = []
     for ip, info in active_connections.items():
-        devices.append({"id": ip, "name": info['name'], "type": "android" if "Samsung" in info['name'] else "iphone", "model": "Remote Device", "os": "Remote OS", "battery": 85, "storage": {"used": 0, "total": 0}, "status": "connected", "lastSeen": "Now", "ip": ip})
-    return jsonify({"host": host, "devices": devices, "activities": activities})
+        devices.append({
+            "id": ip,
+            "name": info.get('name', 'Mobile Device'),
+            "type": "android" if "Samsung" in info.get('model', '') else "iphone",
+            "model": info.get('model', 'Unknown'),
+            "os": info.get('platform', 'Unknown'),
+            "battery": info.get('battery', 0),
+            "storage": {"used": 0, "total": 0},
+            "status": "connected",
+            "lastSeen": info.get('connected_at', 'Now'),
+            "ip": ip,
+            "specs": info # Pass extra specs
+        })
+        
+    return jsonify({
+        "host": host,
+        "devices": devices,
+        "activities": activities,
+        "messages": messages[-10:] # Last 10 messages
+    })
 
 @app.route('/register', methods=['POST'])
 def register():
     ip = request.remote_addr
-    ua = request.headers.get('User-Agent', 'Unknown')
-    name = "Samsung Device" if "Android" in ua else "Mobile Device"
-    active_connections[ip] = {"name": name, "connected_at": datetime.now().strftime("%H:%M:%S")}
-    add_activity(name, "Connected to Mac", "connect")
+    specs = request.json
+    active_connections[ip] = {
+        "name": specs.get('model', 'Samsung Device'),
+        "model": specs.get('model', 'Samsung Device'),
+        "platform": specs.get('platform', 'Unknown'),
+        "battery": specs.get('battery', 0),
+        "screen": specs.get('screen', 'Unknown'),
+        "connected_at": datetime.now().strftime("%H:%M:%S"),
+        "last_seen": time.time()
+    }
+    add_activity(active_connections[ip]['name'], f"Registered with {specs.get('battery')}% battery", "connect")
     gui_queue.put('refresh_view')
-    return jsonify({"status": "registered"})
+    return jsonify({"status": "registered", "all_devices": active_connections})
 
-# Controls
+@app.route('/broadcast', methods=['POST'])
+def broadcast():
+    ip = request.remote_addr
+    msg = request.json.get('message', '')
+    sender = active_connections.get(ip, {}).get('name', ip)
+    new_msg = {
+        "sender": sender,
+        "content": msg,
+        "time": datetime.now().strftime("%H:%M:%S")
+    }
+    messages.append(new_msg)
+    add_activity(sender, f"Broadcast: {msg}", "sync")
+    return jsonify({"status": "sent"})
+
+@app.route('/messages', methods=['GET'])
+def get_messages():
+    # Devices call this to get the latest state and messages
+    return jsonify({
+        "messages": messages[-20:],
+        "devices": active_connections
+    })
+
+# Control APIs
 @app.route('/move', methods=['POST'])
 def move_mouse():
     pyautogui.moveRel(request.json.get('dx', 0), request.json.get('dy', 0))
@@ -310,23 +372,41 @@ def show_lost_screen(message):
         lost_window.mainloop()
     threading.Thread(target=create, daemon=True).start()
 
-def open_settings(): os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices'")
-
 def start_gui():
     root = tk.Tk()
     root.title(f"Josh S Setup")
     root.geometry("450x650")
     root.configure(bg='#000000')
     root.resizable(False, False)
+    
+    def auto_hide(): time.sleep(3); gui_queue.put('hide')
+    
+    def check_queue():
+        global lost_window
+        try:
+            msg = gui_queue.get_nowait()
+            if msg == 'toggle':
+                if root.winfo_viewable(): root.withdraw()
+                else: root.deiconify(); root.lift()
+            elif msg == 'hide': root.withdraw()
+            elif msg == 'refresh_view': render_view()
+            elif msg == 'update': threading.Thread(target=update_app).start()
+            elif msg == 'close_lost':
+                if lost_window: lost_window.destroy(); lost_window = None
+            elif msg.startswith('error:'):
+                root.deiconify(); messagebox.showerror("Josh S Error", msg.replace('error:', ''))
+        except queue.Empty: pass
+        root.after(100, check_queue)
+
+    root.after(100, check_queue)
+    threading.Thread(target=auto_hide, daemon=True).start()
 
     main_container = tk.Frame(root, bg="#000000", padx=30, pady=30)
     main_container.pack(expand=True, fill='both')
-
     current_view = "connect"
 
     def render_view():
         for widget in main_container.winfo_children(): widget.destroy()
-        
         if current_view == "connect":
             tk.Label(main_container, text="Josh S", font=("Helvetica", 36, "bold"), fg="#ffffff", bg='#000000').pack()
             st_b = tk.Frame(main_container, bg='#111111', pady=15, padx=20); st_b.pack(pady=30, fill='x')
@@ -341,48 +421,17 @@ def start_gui():
             if not active_connections:
                 tk.Label(main_container, text="No devices connected", font=("Helvetica", 14), fg="#444", bg="#000000").pack(pady=50)
             for ip, info in active_connections.items():
-                card = tk.Frame(main_container, bg="#111111", pady=15, padx=15); card.pack(fill='x', pady=5)
-                tk.Label(card, text=info['name'], font=("Helvetica", 16, "bold"), fg="#ffffff", bg="#111111").pack(anchor='w')
-                tk.Label(card, text=f"IP: {ip}  •  Joined: {info['connected_at']}", font=("Helvetica", 10), fg="#888888", bg="#111111").pack(anchor='w')
-            ModernButton(main_container, "Open Admin Web Dashboard", lambda: os.system("open http://localhost:5005/admin"), "#007aff", "white", ("Helvetica", 12, "bold")).pack(pady=20, fill='x')
+                card = tk.Frame(main_container, bg="#111111", pady=10, padx=15); card.pack(fill='x', pady=5)
+                tk.Label(card, text=f"{info['name']} ({info.get('battery', '??')}%)", font=("Helvetica", 14, "bold"), fg="#ffffff", bg="#111111").pack(anchor='w')
+                tk.Label(card, text=f"IP: {ip} • Platform: {info.get('platform', '??')}", font=("Helvetica", 9), fg="#888888", bg="#111111").pack(anchor='w')
+            ModernButton(main_container, "Open Full Dashboard", lambda: os.system("open http://localhost:5005/admin"), "#007aff", "white", ("Helvetica", 12, "bold")).pack(pady=20, fill='x')
             ModernButton(main_container, "Back to Pairing", lambda: set_view("connect"), "#222222", "#ffffff", ("Helvetica", 12)).pack(pady=5, fill='x')
-
         footer = tk.Frame(main_container, bg='#000000'); footer.pack(side='bottom', fill='x')
         ModernButton(footer, "Update", lambda: threading.Thread(target=update_app).start(), "#1a1a1a", "#888888", ("Helvetica", 10)).pack(side='left', expand=True, padx=2)
         ModernButton(footer, "Hide", lambda: root.withdraw(), "#1a1a1a", "#888888", ("Helvetica", 10)).pack(side='left', expand=True, padx=2)
 
-    def set_view(v):
-        nonlocal current_view
-        current_view = v
-        render_view()
-
+    def set_view(v): nonlocal current_view; current_view = v; render_view()
     render_view()
-
-    def check_queue():
-        global lost_window
-        try:
-            msg = gui_queue.get_nowait()
-            if msg == 'toggle':
-                # FIX: Check if the window is truly visible and mapped
-                if root.winfo_viewable():
-                    root.withdraw()
-                else:
-                    root.deiconify()
-                    root.lift()
-                    root.attributes("-topmost", True)
-                    root.attributes("-topmost", False)
-            elif msg == 'hide': root.withdraw()
-            elif msg == 'refresh_view': render_view()
-            elif msg == 'update': threading.Thread(target=update_app).start()
-            elif msg == 'close_lost':
-                if lost_window: lost_window.destroy(); lost_window = None
-            elif msg.startswith('error:'):
-                root.deiconify(); messagebox.showerror("Josh S Error", msg.replace('error:', ''))
-        except queue.Empty: pass
-        root.after(100, check_queue)
-
-    root.after(100, check_queue)
-    threading.Thread(target=lambda: (time.sleep(3), gui_queue.put('hide')), daemon=True).start()
     root.mainloop()
 
 if __name__ == '__main__':

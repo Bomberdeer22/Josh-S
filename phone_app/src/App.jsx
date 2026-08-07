@@ -29,10 +29,26 @@ function App() {
   useEffect(() => {
     const registerDevice = async () => {
       try {
+        let batteryInfo = { level: 1, charging: false };
+        try {
+          if ('getBattery' in navigator) {
+            const batt = await navigator.getBattery();
+            batteryInfo = { level: batt.level, charging: batt.charging };
+          }
+        } catch (e) {}
+
+        const specs = {
+          model: navigator.userAgent.includes('Android') ? 'Samsung/Android' : 'iOS Device',
+          platform: navigator.platform,
+          battery: Math.round(batteryInfo.level * 100),
+          screen: `${window.screen.width}x${window.screen.height}`,
+          language: navigator.language
+        };
+
         await fetch('/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ device: 'Mobile Remote' }),
+          body: JSON.stringify(specs),
         });
       } catch (e) {}
     };
@@ -119,6 +135,30 @@ function App() {
   };
 
   const handleTouchEnd = () => { lastPos.current = { x: 0, y: 0 }; };
+
+  const [broadcastMsg, setBroadcastMsg] = useState('');
+  const [messages, setMessages] = useState([]);
+
+  useEffect(() => {
+    const fetchMessages = async () => {
+      try {
+        const res = await fetch('/messages');
+        if (res.ok) {
+          const data = await res.json();
+          setMessages(data.messages);
+        }
+      } catch (e) {}
+    };
+    const msgInterval = setInterval(fetchMessages, 3000);
+    return () => clearInterval(msgInterval);
+  }, []);
+
+  const sendBroadcast = async (e) => {
+    e.preventDefault();
+    if (!broadcastMsg) return;
+    await sendCommand('broadcast', { message: broadcastMsg });
+    setBroadcastMsg('');
+  };
 
   const handleTextSubmit = (e) => {
     e.preventDefault();
@@ -228,6 +268,21 @@ function App() {
               <button style={styles.appBtn} onClick={() => sendCommand('shortcut', { keys: ['command', 'q'] })}><X size={24} color="#ff3b30" /><span>Quit App</span></button>
               <button style={{...styles.appBtn, border: '1px solid #007aff'}} onClick={() => sendCommand('update')}><RefreshCw size={24} color="#007aff" /><span style={{color: '#007aff'}}>Update Mac</span></button>
             </div>
+
+            <div style={styles.controlSection}>
+              <p style={styles.sectionTitle}>Global Device Chat</p>
+              <div style={styles.msgFeed}>
+                {messages.map((m, i) => (
+                  <div key={i} style={styles.msgItem}>
+                    <span style={styles.msgSender}>{m.sender}:</span> {m.content}
+                  </div>
+                ))}
+              </div>
+              <form onSubmit={sendBroadcast} style={styles.inputRow}>
+                <input style={styles.textInput} value={broadcastMsg} onChange={(e) => setBroadcastMsg(e.target.value)} placeholder="Message all devices..." />
+                <button type="submit" style={styles.sendBtn}><Send size={18}/></button>
+              </form>
+            </div>
           </div>
         )}
 
@@ -324,6 +379,9 @@ const styles = {
   mapLink: { width: '100%', padding: '10px', backgroundColor: '#222', border: 'none', color: '#007aff', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' },
   refreshBtn: { backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px', fontSize: '12px', marginTop: '10px' },
   lostActions: { display: 'flex', flexDirection: 'column', gap: '15px' },
+  msgFeed: { backgroundColor: '#0a0a0a', borderRadius: '8px', padding: '10px', height: '120px', overflowY: 'auto', marginBottom: '10px', display: 'flex', flexDirection: 'column', gap: '5px' },
+  msgItem: { fontSize: '11px', color: '#ccc' },
+  msgSender: { color: '#007aff', fontWeight: 'bold', marginRight: '5px' },
   noiseBtn: { backgroundColor: '#ff3b30', color: '#fff', border: 'none', borderRadius: '12px', padding: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' },
   msgBox: { display: 'flex', flexDirection: 'column', gap: '10px' },
   msgInput: { backgroundColor: '#222', border: '1px solid #333', color: '#fff', padding: '10px', borderRadius: '8px', minHeight: '60px' },
