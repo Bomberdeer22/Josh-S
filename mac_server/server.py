@@ -20,8 +20,7 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.3.3"
-# Note: This URL will only work if the repository is PUBLIC on GitHub.
+VERSION = "1.4.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 @app.route('/')
@@ -86,19 +85,40 @@ def volume():
 def brightness():
     data = request.json
     action = data.get('action', 'up')
+    # Using a more universal AppleScript for brightness that triggers system key codes
     if action == 'up':
-        os.system("osascript -e 'tell application \"System Events\" to repeat 2 times \n key code 144 \n end repeat'")
+        os.system("osascript -e 'tell application \"System Events\" to key code 144'")
     elif action == 'down':
-        os.system("osascript -e 'tell application \"System Events\" to repeat 2 times \n key code 145 \n end repeat'")
+        os.system("osascript -e 'tell application \"System Events\" to key code 145'")
     return jsonify({"status": "success"})
 
 @app.route('/media', methods=['POST'])
 def media():
     data = request.json
     action = data.get('action', 'play')
-    if action == 'play': pyautogui.press('playpause')
-    elif action == 'next': pyautogui.press('nexttrack')
-    elif action == 'prev': pyautogui.press('prevtrack')
+    
+    # Universal media keys via AppleScript (talks to Chrome, Spotify, Music app, etc.)
+    script = ""
+    if action == 'play':
+        script = "tell application \"System Events\" to key code 131" # High-level play/pause
+    elif action == 'next':
+        script = "tell application \"System Events\" to key code 124 using {command down}" # Often works for apps, or try native
+    elif action == 'prev':
+        script = "tell application \"System Events\" to key code 123 using {command down}"
+
+    # Specifically targeting Spotify and Chrome/Music via standard media key events
+    if action == 'play':
+        os.system("osascript -e 'tell application \"System Events\" to key code 131'") # Native Play/Pause
+    elif action == 'next':
+        os.system("osascript -e 'tell application \"System Events\" to key code 124'") # Try arrow right or specific media keys
+        # Specific Spotify/Music support
+        os.system("osascript -e 'if application \"Spotify\" is running then tell application \"Spotify\" to next track'")
+        os.system("osascript -e 'if application \"Music\" is running then tell application \"Music\" to next track'")
+    elif action == 'prev':
+        os.system("osascript -e 'tell application \"System Events\" to key code 123'")
+        os.system("osascript -e 'if application \"Spotify\" is running then tell application \"Spotify\" to previous track'")
+        os.system("osascript -e 'if application \"Music\" is running then tell application \"Music\" to previous track'")
+        
     return jsonify({"status": "success"})
 
 @app.route('/launch', methods=['POST'])
@@ -131,49 +151,30 @@ def run_server():
 
 def update_app():
     try:
-        print("Checking for updates...")
-        # Added User-Agent and check for status
         headers = {'User-Agent': 'Mozilla/5.0'}
         r = requests.get(REPO_URL, headers=headers, timeout=15)
-        
         if r.status_code == 404:
-            messagebox.showerror("Update Failed", "GitHub returned a 404 Error.\n\nYour repository is likely PRIVATE. The update button only works if your GitHub repository is PUBLIC.")
+            messagebox.showerror("Update Failed", "Repo is PRIVATE. Make it PUBLIC for updates to work.")
             return
-
-        if not r.ok:
-            messagebox.showerror("Update Failed", f"Network Error: {r.status_code}")
-            return
-
         z = zipfile.ZipFile(io.BytesIO(r.content))
-        
         base_path = os.path.dirname(os.path.abspath(__file__))
         temp_dir = os.path.join(base_path, "temp_update")
         if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
         os.makedirs(temp_dir)
         z.extractall(temp_dir)
-        
         root_folder = os.listdir(temp_dir)[0]
         new_server_dir = os.path.join(temp_dir, root_folder, "mac_server")
-        
         shutil.copy2(os.path.join(new_server_dir, "server.py"), os.path.join(base_path, "server.py"))
-        
         static_dest = os.path.join(base_path, "static")
         if os.path.exists(static_dest): shutil.rmtree(static_dest)
         shutil.copytree(os.path.join(new_server_dir, "static"), static_dest)
-        
         shutil.rmtree(temp_dir)
-        
         messagebox.showinfo("Update Complete", "Josh S has been updated! The app will now restart.")
-        
-        # Relaunch the app
-        try:
-            subprocess.Popen(["open", "-n", "/Applications/Josh S.app"])
-        except:
-            pass
-            
+        try: subprocess.Popen(["open", "-n", "/Applications/Josh S.app"])
+        except: pass
         os._exit(0)
     except Exception as e:
-        messagebox.showerror("Update Failed", f"Could not update: {str(e)}")
+        messagebox.showerror("Update Failed", str(e))
 
 def start_gui():
     root = tk.Tk()
@@ -186,13 +187,10 @@ def start_gui():
 
     tk.Label(root, text="Josh S", font=("Arial", 28, "bold"), fg="#ffffff", bg='#121212').pack(pady=15)
     tk.Label(root, text="Server Status: ONLINE", font=("Arial", 12, "bold"), fg="#4CAF50", bg='#121212').pack()
-    
     tk.Label(root, text=f"Local URL: {url}", font=("Arial", 10), fg="#888", bg='#121212').pack(pady=5)
+    tk.Label(root, text="Open this address on your phone:", font=("Arial", 11), fg="#aaaaaa", bg='#121212').pack(pady=10)
 
-    tk.Label(root, text="Open this address on your phone:", 
-             font=("Arial", 11), fg="#aaaaaa", bg='#121212', justify="center").pack(pady=10)
-
-    entry_url = tk.Entry(root, font=("Arial", 18), justify='center', width=18, bd=0, highlightthickness=0)
+    entry_url = tk.Entry(root, font=("Arial", 18), justify='center', width=18, bd=0)
     entry_url.insert(0, url)
     entry_url.config(state='readonly', readonlybackground="#1e1e1e", fg="#ffffff")
     entry_url.pack(pady=5)
@@ -201,11 +199,7 @@ def start_gui():
                            bg="#333", fg="white", font=("Arial", 10), padx=10, pady=5)
     btn_update.pack(pady=20)
     
-    tk.Label(root, text="Note: Updates require a PUBLIC GitHub repo.", font=("Arial", 8), fg="#555", bg='#121212').pack()
-
-    def on_closing():
-        os._exit(0)
-
+    def on_closing(): os._exit(0)
     root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
 
