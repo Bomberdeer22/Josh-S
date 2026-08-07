@@ -13,13 +13,14 @@ import zipfile
 import shutil
 import io
 
-# Hardware-level controller
+# Hardware-level controller using Quartz and DisplayServices
 try:
     import objc
+    import Quartz
     from Foundation import NSBundle
-    HAS_OBJC = True
+    HAS_PRO_CONTROLLER = True
 except ImportError:
-    HAS_OBJC = False
+    HAS_PRO_CONTROLLER = False
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -27,38 +28,46 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "1.7.1"
+VERSION = "1.8.0"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 def set_mac_brightness(level):
-    """Deep hardware brightness control for modern Macs"""
-    if HAS_OBJC:
+    """Ultimate hardware brightness control"""
+    level = float(level)
+    success = False
+    
+    if HAS_PRO_CONTROLLER:
         try:
+            # Method 1: Use Quartz to get the Main Display ID
+            main_display = Quartz.CGMainDisplayID()
+            
+            # Method 2: Load the Private DisplayServices framework
             bundle_path = '/System/Library/PrivateFrameworks/DisplayServices.framework'
             if os.path.exists(bundle_path):
                 ds_bundle = NSBundle.bundleWithPath_(bundle_path)
                 functions = [('DisplayServicesSetBrightness', b'vIf')]
                 objc.loadBundleFunctions(ds_bundle, globals(), functions)
                 
-                # Try many display IDs to ensure we hit the built-in screen
-                for display_id in range(5):
-                    DisplayServicesSetBrightness(display_id, float(level))
-                return True
+                # Apply to the main display and some common fallbacks
+                DisplayServicesSetBrightness(main_display, level)
+                DisplayServicesSetBrightness(0, level)
+                DisplayServicesSetBrightness(1, level)
+                success = True
         except Exception as e:
-            print(f"Hardware Error: {e}")
+            print(f"Hardware Engine Error: {e}")
             
-    # Fallback to a different AppleScript method (System Settings automation)
-    script = f'''
-    tell application "System Events"
-        repeat with i from 1 to 5
-            try
-                set brightness of display i to {level}
-            end try
-        end repeat
-    end tell
-    '''
-    os.system(f"osascript -e '{script}' 2>/dev/null")
-    return False
+    if not success:
+        # Method 3: The 'CoreDisplay' AppleScript fallback
+        script = f'tell application "System Events" to set brightness of display 1 to {level}'
+        os.system(f"osascript -e '{script}' 2>/dev/null")
+        
+        # Method 4: Key code fallback (Last resort)
+        if level > 0.5:
+            os.system("osascript -e 'tell application \"System Events\" to key code 144'")
+        else:
+            os.system("osascript -e 'tell application \"System Events\" to key code 145'")
+            
+    return success
 
 @app.route('/')
 def index():
@@ -125,7 +134,7 @@ def brightness():
     if level is not None:
         set_mac_brightness(float(level))
     else:
-        # Step fallback
+        # Tap fallback
         action = data.get('action', 'up')
         pyautogui.press('brightnessup' if action == 'up' else 'brightnessdown')
     return jsonify({"status": "success"})
@@ -137,9 +146,8 @@ def media():
     target = data.get('target', 'auto')
     
     if target == "chrome" or target == "browser":
+        # Strategy: Use JS to toggle without moving the screen
         if action == 'play':
-            # FIX: Tries JS toggle and ONLY uses spacebar if JS fails. 
-            # This prevents the "double-toggle" (inverted) bug.
             script = 'tell application "Google Chrome" to tell active tab of window 1 to execute javascript "var v=document.querySelector(\'video, audio\'); if(v) { v.paused ? v.play() : v.pause(); \'success\' } else { \'fail\' }"'
             result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
             if "success" not in result.stdout:
@@ -221,15 +229,19 @@ def update_app():
 def start_gui():
     root = tk.Tk()
     root.title(f"Josh S v{VERSION}")
-    root.geometry("400x400")
+    root.geometry("400x420")
     root.configure(bg='#121212')
 
     ip_addr = get_ip()
     url = f"http://{ip_addr}:5005"
 
     tk.Label(root, text="Josh S", font=("Arial", 28, "bold"), fg="#ffffff", bg='#121212').pack(pady=15)
-    tk.Label(root, text="High-Power Mode Active", font=("Arial", 10), fg="#4CAF50", bg='#121212').pack()
+    
+    status_text = "Pro Controller: Active ✅" if HAS_PRO_CONTROLLER else "Standard Controller Active"
+    tk.Label(root, text=status_text, font=("Arial", 10), fg="#4CAF50", bg='#121212').pack()
+    
     tk.Label(root, text=f"Local URL: {url}", font=("Arial", 10), fg="#888", bg='#121212').pack(pady=5)
+    tk.Label(root, text="Connect your Samsung phone to this address.", font=("Arial", 11), fg="#aaaaaa", bg='#121212').pack(pady=10)
 
     entry_url = tk.Entry(root, font=("Arial", 18), justify='center', width=18, bd=0)
     entry_url.insert(0, url)
