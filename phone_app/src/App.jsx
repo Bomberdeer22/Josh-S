@@ -13,6 +13,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('mouse');
   const [mediaTarget, setMediaTarget] = useState('auto');
   const [brightness, setBrightness] = useState(0.5);
+  const [volume, setVolume] = useState(50);
   
   const lastPos = useRef({ x: 0, y: 0 });
   const moveBuffer = useRef({ dx: 0, dy: 0 });
@@ -50,6 +51,12 @@ function App() {
     const val = parseFloat(e.target.value);
     setBrightness(val);
     sendCommand('brightness', { level: val });
+  };
+
+  const handleVolumeChange = (e) => {
+    const val = parseInt(e.target.value);
+    setVolume(val);
+    sendCommand('volume', { level: val });
   };
 
   const handleTouchMove = (e) => {
@@ -178,10 +185,18 @@ function App() {
 
             <div style={styles.controlSection}>
               <p style={styles.sectionTitle}>Volume</p>
-              <div style={styles.volumeGroup}>
-                <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'down' })}><Volume1 /></button>
-                <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'mute' })}><VolumeX /></button>
-                <button style={styles.iconBtn} onClick={() => sendCommand('volume', { action: 'up' })}><Volume2 /></button>
+              <div style={styles.sliderRow}>
+                <button style={styles.muteBtn} onClick={() => sendCommand('volume', { action: 'mute' })}><VolumeX size={20}/></button>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="100" 
+                  step="1" 
+                  value={volume} 
+                  onChange={handleVolumeChange} 
+                  style={styles.slider}
+                />
+                <Volume2 size={16} color="#555" />
               </div>
             </div>
 
@@ -449,6 +464,16 @@ const styles = {
   slider: {
     flex: 1,
     accentColor: '#007aff',
+  },
+  muteBtn: {
+    backgroundColor: '#222',
+    border: 'none',
+    color: '#fff',
+    padding: '8px',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   appGrid: {
     display: 'grid',
