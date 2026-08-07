@@ -19,7 +19,7 @@ import time
 try:
     import objc
     import Quartz
-    from Foundation import NSBundle
+    from Foundation import NSBundle, NSRunLoop, NSDate
     import CoreLocation
     HAS_PRO_CONTROLLER = True
 except ImportError:
@@ -31,35 +31,12 @@ CORS(app)
 pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0
 
-VERSION = "2.5.1"
+VERSION = "2.5.2"
 REPO_URL = "https://github.com/Bomberdeer22/Josh-S/archive/refs/heads/arena/019fd9f2-josh-s.zip"
 
 gui_queue = queue.Queue()
 
 # --- High Precision Location Engine ---
-class LocationManager(object):
-    def __init__(self):
-        self.loc_data = {"lat": 0, "lon": 0, "status": "Initializing"}
-        if HAS_PRO_CONTROLLER:
-            try:
-                self.manager = CoreLocation.CLLocationManager.alloc().init()
-                self.delegate = LocationDelegate.alloc().initWithManager_(self)
-                self.manager.setDelegate_(self.delegate)
-            except:
-                self.loc_data["status"] = "Hardware error"
-
-    def get_coords(self):
-        if not HAS_PRO_CONTROLLER:
-            return 0, 0, "Hardware not supported"
-        
-        # Trigger a fresh scan
-        self.manager.startUpdatingLocation()
-        # Give it 2 seconds to scan Wi-Fi networks
-        time.sleep(2)
-        self.manager.stopUpdatingLocation()
-        
-        return self.loc_data["lat"], self.loc_data["lon"], self.loc_data["status"]
-
 if HAS_PRO_CONTROLLER:
     class LocationDelegate(CoreLocation.NSObject):
         def initWithManager_(self, parent):
@@ -73,15 +50,50 @@ if HAS_PRO_CONTROLLER:
             coord = loc.coordinate()
             self.parent.loc_data["lat"] = coord.latitude
             self.parent.loc_data["lon"] = coord.longitude
-            self.parent.loc_data["status"] = "High Precision (CoreLocation)"
+            self.parent.loc_data["status"] = "High Precision ✅"
+            self.parent.got_fix = True
 
         def locationManager_didFailWithError_(self, manager, error):
-            self.parent.loc_data["status"] = f"Location denied or unavailable"
+            self.parent.loc_data["status"] = f"Error: {error.code()}"
+            self.parent.got_fix = False
 
-loc_manager = None
-if HAS_PRO_CONTROLLER:
+    class LocationManager(object):
+        def __init__(self):
+            self.loc_data = {"lat": 0, "lon": 0, "status": "Ready"}
+            self.got_fix = False
+            try:
+                self.manager = CoreLocation.CLLocationManager.alloc().init()
+                self.delegate = LocationDelegate.alloc().initWithManager_(self)
+                self.manager.setDelegate_(self.delegate)
+            except Exception as e:
+                self.loc_data["status"] = f"Init Failed: {e}"
+
+        def get_coords(self):
+            if not HAS_PRO_CONTROLLER: return 0, 0, "Hardware not supported"
+            
+            self.got_fix = False
+            # Request permission if not determined
+            self.manager.requestWhenInUseAuthorization()
+            self.manager.startUpdatingLocation()
+            
+            # Give the system run loop time to process location events
+            timeout = 5 # 5 seconds max
+            start_time = time.time()
+            while not self.got_fix and (time.time() - start_time) < timeout:
+                NSRunLoop.currentRunLoop().runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.5))
+            
+            self.manager.stopUpdatingLocation()
+            
+            if not self.got_fix:
+                return 0, 0, "Wait timed out (Check Privacy Settings)"
+            
+            return self.loc_data["lat"], self.loc_data["lon"], self.loc_data["status"]
+
     loc_manager = LocationManager()
+else:
+    loc_manager = None
 
+# ... (Brightness, Media, etc. remain the same)
 def set_mac_brightness(level):
     level = float(level)
     success = False
@@ -104,13 +116,11 @@ def set_mac_brightness(level):
 
 # --- Lost Mode Functions ---
 lost_window = None
-
 def show_lost_screen(message):
     global lost_window
     if lost_window:
         try: lost_window.destroy()
         except: pass
-    
     def create_window():
         global lost_window
         lost_window = tk.Tk()
@@ -121,39 +131,27 @@ def show_lost_screen(message):
         tk.Label(lost_window, text=message, font=("Helvetica", 30), fg="white", bg="black", wraplength=800).pack(expand=True)
         tk.Label(lost_window, text="This Mac is being tracked.", font=("Helvetica", 18), fg="#444", bg="black").pack(side='bottom', pady=50)
         lost_window.mainloop()
-
     threading.Thread(target=create_window, daemon=True).start()
 
 @app.route('/lost_info', methods=['GET'])
 def get_lost_info():
-    # 1. Battery
-    try:
-        battery_raw = subprocess.check_output(["pmset", "-g", "batt"]).decode()
-        percent = battery_raw.split("%")[0].split("\t")[-1] + "%" if "%" in battery_raw else "Unknown"
-    except: percent = "--"
+    battery_raw = subprocess.check_output(["pmset", "-g", "batt"]).decode()
+    percent = battery_raw.split("%")[0].split("\t")[-1] + "%" if "%" in battery_raw else "Unknown"
     
-    # 2. Precise Location (CoreLocation)
-    lat, lon, status = 0, 0, "Scanning..."
+    lat, lon, status = 0, 0, "Searching..."
     if loc_manager:
         lat, lon, status = loc_manager.get_coords()
 
-    # 3. Fallback to IP if CoreLocation fails
     location_name = status
     if lat == 0:
         try:
             r = requests.get("http://ip-api.com/json/", timeout=5).json()
             if r.get('status') == 'success':
                 lat, lon = r.get('lat'), r.get('lon')
-                location_name = f"{r.get('city')} (IP-Based Fallback)"
+                location_name = f"{r.get('city')} (IP Fallback)"
         except: pass
         
-    return jsonify({
-        "battery": percent,
-        "location": location_name,
-        "lat": lat,
-        "lon": lon,
-        "ip": get_ip()
-    })
+    return jsonify({"battery": percent, "location": location_name, "lat": lat, "lon": lon, "ip": get_ip()})
 
 @app.route('/play_noise', methods=['POST'])
 def play_noise():
@@ -306,8 +304,8 @@ def update_app():
         os._exit(0)
     except Exception as e: gui_queue.put(f'error:Update failed: {str(e)}')
 
-def open_settings():
-    os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'")
+def open_settings_accessibility(): os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'")
+def open_settings_location(): os.system("open 'x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices'")
 
 class ModernButton(tk.Frame):
     def __init__(self, parent, text, command, bg_color, fg_color, font):
@@ -329,7 +327,7 @@ class ModernButton(tk.Frame):
 def start_gui():
     root = tk.Tk()
     root.title(f"Josh S")
-    root.geometry("450x550")
+    root.geometry("450x620")
     root.configure(bg='#000000')
     root.resizable(False, False)
 
@@ -347,9 +345,7 @@ def start_gui():
             elif msg == 'hide': root.withdraw()
             elif msg == 'update': threading.Thread(target=update_app).start()
             elif msg == 'close_lost':
-                if lost_window:
-                    lost_window.destroy()
-                    lost_window = None
+                if lost_window: lost_window.destroy(); lost_window = None
             elif msg.startswith('error:'):
                 root.deiconify()
                 messagebox.showerror("Josh S Error", msg.replace('error:', ''))
@@ -375,7 +371,7 @@ def start_gui():
     status_color = "#4CAF50" if HAS_PRO_CONTROLLER else "#f44336"
     status_msg = "Tracker Active ✅" if HAS_PRO_CONTROLLER else "Tracker Error"
     tk.Label(status_badge, text=status_msg, font=subtitle_font, fg=status_color, bg='#111111').pack()
-    tk.Label(status_badge, text="High-Precision GPS/WiFi Engine", font=label_font, fg="#888888", bg='#111111').pack()
+    tk.Label(status_badge, text="High-Precision Engine", font=label_font, fg="#888888", bg='#111111').pack()
 
     ip_addr = get_ip()
     url = f"http://{ip_addr}:5005"
@@ -386,10 +382,11 @@ def start_gui():
     entry_url.pack(pady=5, ipady=10)
 
     btn_frame = tk.Frame(main_frame, bg='#000000')
-    btn_frame.pack(side='bottom', pady=20, fill='x')
+    btn_frame.pack(side='bottom', pady=10, fill='x')
 
     ModernButton(btn_frame, "Check for Updates", lambda: threading.Thread(target=update_app).start(), "#007aff", "white", ("Helvetica", 12, "bold")).pack(side='top', fill='x', pady=5)
-    ModernButton(btn_frame, "Fix Permissions", open_settings, "#222222", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
+    ModernButton(btn_frame, "Fix Accessibility", open_settings_accessibility, "#222222", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
+    ModernButton(btn_frame, "Fix Location Permission", open_settings_location, "#222222", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
     ModernButton(btn_frame, "Hide Window", lambda: root.withdraw(), "#333333", "#ffffff", ("Helvetica", 11)).pack(side='top', fill='x', pady=5)
 
     def on_closing(): root.withdraw()
